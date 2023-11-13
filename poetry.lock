@@ -200,6 +200,20 @@ docs = ["ipython", "matplotlib", "numpydoc", "sphinx"]
 tests = ["pytest", "pytest-cov", "pytest-xdist"]
 
 [[package]]
+name = "data-science-types"
+version = "0.2.23"
+description = "Type stubs for Python machine learning libraries"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "data-science-types-0.2.23.tar.gz", hash = "sha256:8096b9a35a8a187bf9a122b4707c97de841d810744690ee2a4ac30c6462e0d16"},
+    {file = "data_science_types-0.2.23-py3-none-any.whl", hash = "sha256:bca319abc0e53a0316f9fcb887937e942477cb9e5fc63c8581e0b0438903b977"},
+]
+
+[package.extras]
+dev = ["black", "flake8", "flake8-pyi", "matplotlib", "mypy (==0.770)", "numpy", "pandas", "pytest"]
+
+[[package]]
 name = "decorator"
 version = "5.1.1"
 description = "Decorators for Humans"
@@ -1172,4 +1186,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.12"
-content-hash = "985545086f2e47158e04a0a49cf3dc7c6a9d90d2a731a9dc938b784229e0186d"
+content-hash = "3f6da42103710721b080763770cc2760a31361525063355ca35be4c70c8c501e"
