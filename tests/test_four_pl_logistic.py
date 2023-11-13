@@ -29,3 +29,54 @@ plt.xlabel("x")
 plt.ylabel("Response")
 plt.title("4PL Curve Fit")
 plt.show()
+
+from matplotlib.ticker import ScalarFormatter
+
+def plot_curve(x_data, y_data, fitted_model: FourPLLogistic) -> bytes:
+    # Generate y-data based on the fitted parameters
+    # Plot the data and the fitted curve
+    # set x-axis to log scale
+    e = .1 
+    x_min = np.log10(max(min(x_data), e))
+    x = np.logspace( x_min, np.log10(max(x_data)), 100)
+    y_pred = fitted_model.predict(x)
+    # set scales to log
+    plt.xscale("log")
+    plt.yscale("log")
+
+    plt.scatter(x_data, y_data, label="Data")
+    plt.plot(x, y_pred, label="Fitted curve", color="red")
+    plt.legend()
+    formatter = ScalarFormatter()
+    formatter.set_scientific(False)
+    plt.gca().xaxis.set_major_formatter(formatter)
+    plt.xlabel("concentration")
+    plt.ylabel("Response")
+    plt.title("4PL Curve Fit")
+
+
+    # print r2
+    y_mean = np.mean(y_data)
+    y_pred = fitted_model.predict(x_data)
+    ss_res = np.sum((y_data - y_pred) ** 2)
+    ss_tot = np.sum((y_data - y_mean) ** 2)
+    r2 = 1 - (ss_res / ss_tot)
+    print("R2", r2)
+
+    # set horizontal and vertical lines for ULOD and LLOD
+    llod, ulod = fitted_model.calculate_lod(x_data, y_data)
+    plt.axhline(llod, color="red", linestyle="--")
+    plt.axhline(ulod, color="red", linestyle="--")
+    print("LLOD", llod)
+    print("ULOD", ulod)
+
+    # Save the plot to a BytesIO object
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png")
+    plt.show()
+    plt.clf()
+    buf.seek(0)
+    return buf.read()
+
+
+plot_curve(pd.Series(x), pd.Series(y), model)
