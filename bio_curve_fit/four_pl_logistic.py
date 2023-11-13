@@ -49,11 +49,11 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         if weight_func is not None:
             weights = weight_func(y_data)
             absolute_sigma = True
-        # Initial guess for the parameters
 
+        # Initial guess for the parameters
         # initial_guess = [546.75, 1, 652.6776843228683, 221115.26]
         initial_guess = [min(y_data), 1, np.mean(x_data), max(y_data)]
-        print(initial_guess)
+        print("Initial guess:", initial_guess)
 
         # Perform the curve fit
         params, cov = curve_fit(
@@ -61,13 +61,45 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             x_data,
             y_data,
             p0=initial_guess,
-            maxfev=10000,
+            maxfev=500,
+            # jac=self.jacobian,
             sigma=weights,
             absolute_sigma=absolute_sigma,
         )
         self.A_, self.B_, self.C_, self.D_ = params
         self.cov_ = cov
         return self
+
+    @staticmethod
+    def jacobian(x_data, A, B, C, D):
+        """
+        TODO: still need to double-check the math here.
+        """
+        # Partial derivatives of the 4PL function with respect to A, B, C, D
+        partial_A = (1.0 - ((x_data / C) ** B)) / (1.0 + ((x_data / C) ** B))
+        partial_B = (
+            -((A - D) * (x_data / C) ** B * np.log(x_data / C)) / (1.0 + ((x_data / C) ** B)) ** 2
+        )
+        partial_C = (B * (A - D) * (x_data / C) ** B) / (C * (1.0 + ((x_data / C) ** B)) ** 2)
+        partial_D = 1.0 / (1.0 + ((x_data / C) ** B))
+
+        # Jacobian matrix
+        J = np.array([partial_A, partial_B, partial_C, partial_D]).T
+        return J
+
+    def predict_std_dev(self, x_data):
+        """
+        TODO: still need to double-check the math here.
+        """
+        if self.cov_ is None:
+            raise Exception(
+                "Covariance matrix is not available. Please call 'fit' with appropriate data."
+            )
+        J = self.jacobian(x_data)
+        # Prediction variance
+        pred_var = np.sum((J @ self.cov_) * J, axis=1)
+
+        return np.sqrt(pred_var)
 
     def calculate_lod(
         self,
@@ -82,22 +114,22 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         :param bottom_std_dev: Standard deviation at the bottom calibration point.
         :param top_std_dev: Standard deviation at the top calibration point.
         :param std_dev_multiplier: Multiplier for the standard deviations (default 2.5).
-        :return: A tuple (LLOD, ULOD).
+        :return: Pair of tuples containing the LLOD and ULOD, and the corresponding x-values.
         """
 
-        x_min = np.min(x_data)
-        x_max = np.max(x_data)
         x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
+        # remove zeros from x_data
+        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]
+        x_min = np.min(x_indexed_y_data.index)
+        x_max = np.max(x_indexed_y_data.index)
         bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()  # type: ignore
         top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()  # type: ignore
 
         # Calculate LLOD
-        print(self.predict(x_min), bottom_std_dev, bottom_std_dev * lower_std_dev_multiplier)
-        llod = self.predict(x_min) + (lower_std_dev_multiplier * bottom_std_dev)
+        llod_x = self.predict(x_min) + (lower_std_dev_multiplier * bottom_std_dev)
         # Calculate ULOD
-        ulod = self.predict(x_max) - (upper_std_dev_multiplier * top_std_dev)
-
-        return llod, ulod
+        ulod_y = self.predict(x_max) - (upper_std_dev_multiplier * top_std_dev)
+        return self.predict_inverse(llod_x), self.predict_inverse(ulod_y), llod_x, ulod_y
 
     def predict_inverse(self, y):
         """Inverse 4 Parameter Logistic (4PL) model.
