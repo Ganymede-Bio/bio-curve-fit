@@ -132,7 +132,7 @@ x = pd.Series(
 # ]
 
 
-def test_umoja():
+def test_fit2():
     model = FourPLLogistic().fit(
         x,
         y,
