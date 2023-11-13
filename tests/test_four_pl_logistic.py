@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from bio_curve_fit.four_pl_logistic import FourPLLogistic
+import pandas as pd
+import io
+from matplotlib.ticker import ScalarFormatter
 
 TEST_PARAMS = [0.0, 1.0, 2.0, 3.0]
 
@@ -30,7 +33,6 @@ plt.ylabel("Response")
 plt.title("4PL Curve Fit")
 plt.show()
 
-from matplotlib.ticker import ScalarFormatter
 
 def plot_curve(x_data, y_data, fitted_model: FourPLLogistic) -> bytes:
     # Generate y-data based on the fitted parameters
@@ -78,5 +80,3 @@ def plot_curve(x_data, y_data, fitted_model: FourPLLogistic) -> bytes:
     buf.seek(0)
     return buf.read()
 
-
-plot_curve(pd.Series(x), pd.Series(y), model)
