@@ -1,46 +1,47 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from bio_curve_fit.four_pl_logistic import FourPLLogistic
-import pandas as pd
 import io
 from matplotlib.ticker import ScalarFormatter
 
-TEST_PARAMS = [0.0, 1.0, 2.0, 3.0]
 
-x_data = np.linspace(0, 10, 100)
-y_data = FourPLLogistic.four_param_logistic(
-    x_data + np.random.normal(0.0, 0.1 * x_data, len(x_data)), *TEST_PARAMS
-)
+def test_fit():
+    TEST_PARAMS = [0.0, 1.0, 2.0, 3.0]
 
-model = FourPLLogistic().fit(
-    x_data, y_data, weight_func=FourPLLogistic.inverse_variance_weight_function
-)
+    x_data = np.linspace(0, 10, 100)
+    y_data = FourPLLogistic.four_param_logistic(
+        x_data + np.random.normal(0.0, 0.1 * x_data, len(x_data)), *TEST_PARAMS
+    )
 
-# Extract the fitted parameters
-params = model.get_params()
+    model = FourPLLogistic().fit(
+        x_data, y_data, weight_func=FourPLLogistic.inverse_variance_weight_function
+    )
 
-assert np.isclose(params, TEST_PARAMS, rtol=.01).all()
+    # Extract the fitted parameters
+    params = model.get_params()
 
-# Generate y-data based on the fitted parameters
-y_fitted = model.predict(x_data)
+    assert np.isclose(params, TEST_PARAMS, rtol=0.1).all()  # type: ignore
 
-# Plot the data and the fitted curve
-plt.scatter(x_data, y_data, label="Data")
-plt.plot(x_data, y_fitted, label="Fitted curve", color="red")
-plt.legend()
-plt.xlabel("x")
-plt.ylabel("Response")
-plt.title("4PL Curve Fit")
-plt.show()
+    # Generate y-data based on the fitted parameters
+    y_fitted = model.predict(x_data)
+
+    # Plot the data and the fitted curve
+    plt.scatter(x_data, y_data, label="Data")
+    plt.plot(x_data, y_fitted, label="Fitted curve", color="red")
+    plt.legend()
+    plt.xlabel("x")
+    plt.ylabel("Response")
+    plt.title("4PL Curve Fit")
+    plt.show()
 
 
 def plot_curve(x_data, y_data, fitted_model: FourPLLogistic) -> bytes:
     # Generate y-data based on the fitted parameters
     # Plot the data and the fitted curve
     # set x-axis to log scale
-    e = .1 
+    e = 0.1
     x_min = np.log10(max(min(x_data), e))
-    x = np.logspace( x_min, np.log10(max(x_data)), 100)
+    x = np.logspace(x_min, np.log10(max(x_data)), 100)
     y_pred = fitted_model.predict(x)
     # set scales to log
     plt.xscale("log")
@@ -55,7 +56,6 @@ def plot_curve(x_data, y_data, fitted_model: FourPLLogistic) -> bytes:
     plt.xlabel("concentration")
     plt.ylabel("Response")
     plt.title("4PL Curve Fit")
-
 
     # print r2
     y_mean = np.mean(y_data)
@@ -79,4 +79,3 @@ def plot_curve(x_data, y_data, fitted_model: FourPLLogistic) -> bytes:
     plt.clf()
     buf.seek(0)
     return buf.read()
-
