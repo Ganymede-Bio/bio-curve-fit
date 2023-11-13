@@ -95,7 +95,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             raise Exception(
                 "Covariance matrix is not available. Please call 'fit' with appropriate data."
             )
-        J = self.jacobian(x_data)
+        J = self.jacobian(x_data, self.A_, self.B_, self.C_, self.D_)
         # Prediction variance
         pred_var = np.sum((J @ self.cov_) * J, axis=1)
 
