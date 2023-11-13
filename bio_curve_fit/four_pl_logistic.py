@@ -51,7 +51,6 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             absolute_sigma = True
 
         # Initial guess for the parameters
-        # initial_guess = [546.75, 1, 652.6776843228683, 221115.26]
         initial_guess = [min(y_data), 1, np.mean(x_data), max(y_data)]
         print("Initial guess:", initial_guess)
 
