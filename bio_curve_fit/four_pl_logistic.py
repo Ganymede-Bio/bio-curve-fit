@@ -1,7 +1,7 @@
 import numpy as np
-from scipy.optimize import curve_fit
+from scipy.optimize import curve_fit  # type: ignore
 import pandas as pd
-from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.base import BaseEstimator, RegressorMixin  # type: ignore
 
 
 class FourPLLogistic(BaseEstimator, RegressorMixin):
@@ -60,7 +60,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             x_data,
             y_data,
             p0=initial_guess,
-            maxfev=500,
+            maxfev=10000,
             # jac=self.jacobian,
             sigma=weights,
             absolute_sigma=absolute_sigma,
@@ -89,6 +89,11 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
     def predict_std_dev(self, x_data):
         """
         TODO: still need to double-check the math here.
+        See: 
+            https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_graphing_confidence_and_predic.htm
+            https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_how_confidence_and_prediction_.htm
+            https://stats.stackexchange.com/questions/15423/how-to-compute-prediction-bands-for-non-linear-regression
+        
         """
         if self.cov_ is None:
             raise Exception(
@@ -118,9 +123,9 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
 
         x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
         # remove zeros from x_data
-        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]
-        x_min = np.min(x_indexed_y_data.index)
-        x_max = np.max(x_indexed_y_data.index)
+        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]  # type: ignore
+        x_min = np.min(x_indexed_y_data.index)  # type: ignore
+        x_max = np.max(x_indexed_y_data.index)  # type: ignore
         bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()  # type: ignore
         top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()  # type: ignore
 
@@ -134,7 +139,10 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         """Inverse 4 Parameter Logistic (4PL) model.
 
         Used for calculating the x-value for a given y-value.
-        Usually, standard curves are fitted using concentration as x-values and response as y-values, so that variance in response is modeled for a given known concentration. But for samples of unknown concentration, we want to get the concentration as given response, which is what this function does.
+        Usually, standard curves are fitted using concentration as x-values and response as
+        y-values, so that variance in response is modeled for a given known concentration.
+        But for samples of unknown concentration, we want to get the concentration as given
+        response, which is what this function does.
 
         """
         return self.C_ * (((self.A_ - self.D_) / (y - self.D_)) - 1) ** (1 / self.B_)  # type: ignore
