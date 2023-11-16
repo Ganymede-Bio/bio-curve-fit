@@ -5,7 +5,9 @@ from sklearn.base import BaseEstimator, RegressorMixin  # type: ignore
 
 
 class FourPLLogistic(BaseEstimator, RegressorMixin):
-    def __init__(self, A=None, B=None, C=None, D=None, LLOD=None, ULOD=None, ULOD_y=None, LLOD_y=None):
+    def __init__(
+        self, A=None, B=None, C=None, D=None, LLOD=None, ULOD=None, ULOD_y=None, LLOD_y=None
+    ):
         # A is the minimum asymptote
         self.A_ = A
         # B is the Hill's slope
@@ -22,7 +24,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         self.guess_D_ = None
         # Estimated Limits of Detection for response signal
         self.LLOD_y_ = LLOD_y
-        self.ULOD_y_ = ULOD_y 
+        self.ULOD_y_ = ULOD_y
         # Estimated Limits of Detection for concentration
         self.LLOD_ = LLOD
         self.ULOD_ = ULOD
