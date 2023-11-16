@@ -24,7 +24,7 @@ def test_fit():
     assert np.isclose(params, TEST_PARAMS, rtol=0.4).all()  # type: ignore
 
     r2 = model.score(x_data, y_data)
-    assert r2 > 0.95
+    assert r2 > 0.995
 
     plot_curve(x_data, y_data, model)
 
@@ -52,27 +52,6 @@ y = pd.Series(
     ]
 )
 
-# x = pd.Series([
-#     1550.000000,
-#     1550.000000,
-#     387.500000,
-#     387.500000,
-#     96.875000,
-#     96.875000,
-#     24.218750,
-#     24.218750,
-#     6.054688,
-#     6.054688,
-#     1.513672,
-#     1.513672,
-#     0.378417969,
-#     0.378417969,
-#     0.094604492,
-#     0.094604492,
-#     0.000000,
-#     0.000000,
-# ])
-
 x = pd.Series(
     [
         1360,
@@ -97,41 +76,6 @@ x = pd.Series(
 )
 
 
-# x = [
-#     1550.000000,
-#     1550.000000,
-#     387.500000,
-#     387.500000,
-#     96.875000,
-#     96.875000,
-#     24.218750,
-#     24.218750,
-#     6.054688,
-#     6.054688,
-#     1.513672,
-#     1.513672,
-#     0.000000,
-#     0.000000,
-# ]
-
-# y = [
-#     64926,
-#     62093,
-#     13425,
-#     13040,
-#     3142,
-#     3091,
-#     1052,
-#     834,
-#     342,
-#     278,
-#     245,
-#     250,
-#     248,
-#     190,
-# ]
-
-
 def test_fit2():
     model = FourPLLogistic().fit(
         x,
@@ -139,4 +83,10 @@ def test_fit2():
         weight_func=FourPLLogistic.inverse_variance_weight_function,
     )
     print("Params:", model.get_params())
+    print(model.predict_inverse(0.1))
     plot_curve(x, y, model)
+    assert model.score(x, y) > 0.995  # type: ignore
+    print(model.ULOD_y_, model.LLOD_y_)
+
+    assert model.ULOD_y_ == 220006.8397685415
+    assert model.LLOD_y_ == 798.7000577483678

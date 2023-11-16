@@ -20,6 +20,7 @@ ipython = "8.12.2"
 pytest = ">=7.4.3"
 data-science-types = ">=0.2.23"
 ruff = ">=0.1.5"
+ipykernel = "^6.26.0"
 
 [build-system]
 requires = ["poetry-core"]

@@ -5,7 +5,7 @@ from sklearn.base import BaseEstimator, RegressorMixin  # type: ignore
 
 
 class FourPLLogistic(BaseEstimator, RegressorMixin):
-    def __init__(self, A=None, B=None, C=None, D=None):
+    def __init__(self, A=None, B=None, C=None, D=None, LLOD=None, ULOD=None, ULOD_y=None, LLOD_y=None):
         # A is the minimum asymptote
         self.A_ = A
         # B is the Hill's slope
@@ -15,6 +15,17 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         # D is the maximum asymptote
         self.D_ = D
         self.cov_ = None
+        # Initial guesses used when fitting the curve
+        self.guess_A_ = None
+        self.guess_B_ = None
+        self.guess_C_ = None
+        self.guess_D_ = None
+        # Estimated Limits of Detection for response signal
+        self.LLOD_y_ = LLOD_y
+        self.ULOD_y_ = ULOD_y 
+        # Estimated Limits of Detection for concentration
+        self.LLOD_ = LLOD
+        self.ULOD_ = ULOD
 
     def get_params(self):
         return self.A_, self.B_, self.C_, self.D_
@@ -32,7 +43,50 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         # To avoid division by zero, add a small constant to y_data.
         return y_data + np.finfo(float).eps
 
-    def fit(self, x_data, y_data, weight_func=None):
+    def _calculate_lod_replicate_variance(
+        self,
+        x_data,
+        y_data,
+        lower_std_dev_multiplier: float = 2.5,
+        upper_std_dev_multiplier: float = 0.0,
+    ):
+        """
+        Calculate the Lower and Upper Limits of Detection (LLOD and ULOD) using variance
+        of replicate max and min concentration standards. It ignore zero concentration
+        standards. If there are no replicates, the standard deviation zero
+        TODO: some minimum variance should be used.
+
+        In the notation below we assume the response signal is the Y-axis and the
+        concentration is the X-axis.
+
+        Example: Two replicates of the lowest concentration standard (conc=1.0 pg/ml)
+        have standard deviation of 100 across their responses. LLOD will be `model.predict
+        (1.0) + 100 * 2.5` where 2.5 is the `lower_std_dev_multiplier` parameter.
+
+        :param bottom_std_dev: Standard deviation at the bottom calibration point.
+        :param top_std_dev: Standard deviation at the top calibration point.
+        :param std_dev_multiplier: Multiplier for the standard deviations (default 2.5).
+        :return: Pair of tuples containing the LLOD and ULOD, and the corresponding x-values.
+        """
+
+        x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
+        # remove zeros from x_data
+        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]  # type: ignore
+        x_min = np.min(x_indexed_y_data.index)  # type: ignore
+        x_max = np.max(x_indexed_y_data.index)  # type: ignore
+        bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()  # type: ignore
+        top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()  # type: ignore
+
+        # Calculate LLOD and ULOD of RESPONSE SIGNAL
+        llod = self.predict(x_min) + (lower_std_dev_multiplier * bottom_std_dev)
+        ulod = self.predict(x_max) - (upper_std_dev_multiplier * top_std_dev)
+
+        # Calculate the limits of detection for CONCENTRATION
+        llod_x = self.predict_inverse(llod)
+        ulod_x = self.predict_inverse(ulod)
+        return llod_x, ulod_x, llod, ulod
+
+    def fit(self, x_data, y_data, weight_func=None, LOD_func=None):
         """
         Fit the 4 Parameter Logistic (4PL) model.
 
@@ -44,6 +98,10 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             Thus for a typical 1/y^2 weighting, `weight_func` should be `lambda
             y_data: y_data`
         """
+        if LOD_func is None:
+            # default LOD_func is to use replicate variance
+            LOD_func = self._calculate_lod_replicate_variance
+
         absolute_sigma = False
         weights = None
         if weight_func is not None:
@@ -51,8 +109,11 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             absolute_sigma = True
 
         # Initial guess for the parameters
-        initial_guess = [min(y_data), 1, np.mean(x_data), max(y_data)]
-        print("Initial guess:", initial_guess)
+        self.guess_A_ = min(y_data)
+        self.guess_B_ = 1.0
+        self.guess_C_ = np.mean(x_data)
+        self.guess_D_ = max(y_data)
+        initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_]
 
         # Perform the curve fit
         params, cov = curve_fit(
@@ -67,6 +128,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         )
         self.A_, self.B_, self.C_, self.D_ = params
         self.cov_ = cov
+        self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
         return self
 
     @staticmethod
@@ -89,11 +151,11 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
     def predict_std_dev(self, x_data):
         """
         TODO: still need to double-check the math here.
-        See: 
+        See:
             https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_graphing_confidence_and_predic.htm
             https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_how_confidence_and_prediction_.htm
             https://stats.stackexchange.com/questions/15423/how-to-compute-prediction-bands-for-non-linear-regression
-        
+
         """
         if self.cov_ is None:
             raise Exception(
@@ -104,36 +166,6 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         pred_var = np.sum((J @ self.cov_) * J, axis=1)
 
         return np.sqrt(pred_var)
-
-    def calculate_lod(
-        self,
-        x_data,
-        y_data,
-        lower_std_dev_multiplier: float = 2.5,
-        upper_std_dev_multiplier: float = 0.0,
-    ):
-        """
-        Calculate the Lower and Upper Limits of Detection (LLOD and ULOD).
-
-        :param bottom_std_dev: Standard deviation at the bottom calibration point.
-        :param top_std_dev: Standard deviation at the top calibration point.
-        :param std_dev_multiplier: Multiplier for the standard deviations (default 2.5).
-        :return: Pair of tuples containing the LLOD and ULOD, and the corresponding x-values.
-        """
-
-        x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
-        # remove zeros from x_data
-        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]  # type: ignore
-        x_min = np.min(x_indexed_y_data.index)  # type: ignore
-        x_max = np.max(x_indexed_y_data.index)  # type: ignore
-        bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()  # type: ignore
-        top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()  # type: ignore
-
-        # Calculate LLOD
-        llod_x = self.predict(x_min) + (lower_std_dev_multiplier * bottom_std_dev)
-        # Calculate ULOD
-        ulod_y = self.predict(x_max) - (upper_std_dev_multiplier * top_std_dev)
-        return self.predict_inverse(llod_x), self.predict_inverse(ulod_y), llod_x, ulod_y
 
     def predict_inverse(self, y):
         """Inverse 4 Parameter Logistic (4PL) model.

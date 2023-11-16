@@ -6,7 +6,15 @@ from matplotlib.ticker import ScalarFormatter
 import io
 
 
-def plot_curve(x_data, y_data, fitted_model: FourPLLogistic) -> bytes:
+def plot_curve(
+    x_data,
+    y_data,
+    fitted_model: FourPLLogistic,
+    title="4PL Curve Fit",
+    x_label="Concentration",
+    y_label="Response to ECL",
+    show_plot: bool = False,
+) -> bytes:
     """
     Generate a plot of the data and the fitted curve.
     """
@@ -32,20 +40,20 @@ def plot_curve(x_data, y_data, fitted_model: FourPLLogistic) -> bytes:
     formatter = ScalarFormatter()
     formatter.set_scientific(False)
     plt.gca().xaxis.set_major_formatter(formatter)
-    plt.xlabel("concentration")
-    plt.ylabel("Response")
-    plt.title("4PL Curve Fit")
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
 
     # set horizontal and vertical lines for ULOD and LLOD
-    _, _, llod_x, ulod_x = fitted_model.calculate_lod(x_data, y_data)
-    plt.axhline(llod_x, color="red", linestyle="--", label="LLOD")
-    plt.axhline(ulod_x, color="blue", linestyle="--", label="ULOD")
+    llod_response, ulod_response = fitted_model.LLOD_y_, fitted_model.ULOD_y_
+    plt.axhline(llod_response, color="red", linestyle="--", label="LLOD")  # type: ignore
+    plt.axhline(ulod_response, color="blue", linestyle="--", label="ULOD")  # type: ignore
     plt.legend()
-
+    if show_plot:
+            plt.show()
     # Save the plot to a BytesIO object
     buf = io.BytesIO()
     plt.savefig(buf, format="png")
-    plt.show()
     plt.clf()
     buf.seek(0)
     return buf.read()
