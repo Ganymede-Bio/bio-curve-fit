@@ -20,13 +20,16 @@ def test_fit():
         x_data, y_data, weight_func=FourPLLogistic.inverse_variance_weight_function
     )
 
-    params = model.get_params()
+    params = list(model.get_params().values())
     assert np.isclose(params, TEST_PARAMS, rtol=0.4).all()  # type: ignore
 
     r2 = model.score(x_data, y_data)
     assert r2 > 0.995
 
     plot_curve(x_data, y_data, model)
+
+    # test __repr__
+    print(model)
 
 
 y = pd.Series(

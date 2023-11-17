@@ -29,8 +29,26 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         self.LLOD_ = LLOD
         self.ULOD_ = ULOD
 
-    def get_params(self):
-        return self.A_, self.B_, self.C_, self.D_
+    def get_params(self, deep=False):
+        if deep:
+            return {
+                "A": self.A_,
+                "B": self.B_,
+                "C": self.C_,
+                "D": self.D_,
+                "LLOD": self.LLOD_,
+                "ULOD": self.ULOD_,
+                "ULOD_y": self.ULOD_y_,
+                "LLOD_y": self.LLOD_y_,
+            }
+        else:
+            return {
+                "A": self.A_,
+                "B": self.B_,
+                "C": self.C_,
+                "D": self.D_,
+            } 
+    
 
     @staticmethod
     def four_param_logistic(x, A, B, C, D):
@@ -170,6 +188,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         return np.sqrt(pred_var)
 
     def predict_inverse(self, y):
+        # TODO: could merge this with `predict` and make it a parameter
         """Inverse 4 Parameter Logistic (4PL) model.
 
         Used for calculating the x-value for a given y-value.
