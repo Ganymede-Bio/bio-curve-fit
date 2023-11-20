@@ -32,7 +32,7 @@ def test_fit():
     print(model)
 
 
-y = pd.Series(
+test_y = pd.Series(
     [
         223747,
         214105,
@@ -55,7 +55,7 @@ y = pd.Series(
     ]
 )
 
-x = pd.Series(
+test_x = pd.Series(
     [
         1360,
         1360,
@@ -81,14 +81,14 @@ x = pd.Series(
 
 def test_fit2():
     model = FourPLLogistic().fit(
-        x,
-        y,
+        test_x,
+        test_y,
         weight_func=FourPLLogistic.inverse_variance_weight_function,
     )
     print("Params:", model.get_params())
     print(model.predict_inverse(0.1))
-    plot_curve(x, y, model)
-    assert model.score(x, y) > 0.995  # type: ignore
+    plot_curve(test_x, test_y, model)
+    assert model.score(test_x, test_y) > 0.995  # type: ignore
     print(model.ULOD_y_, model.LLOD_y_)
 
     assert model.ULOD_y_ == 220006.8397685415
