@@ -17,11 +17,9 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         ULOD=None,
         ULOD_y=None,
         LLOD_y=None,
-        B_abs_max=30,
         slope_guess=True,
         slope_guess_num_points_to_use=3,
         slope_direction_positive: Optional[bool] = None,
-        asymptote_tolerance_perc=0.01,
     ):
         """
         Four Parameter Logistic (4PL) model.
@@ -53,11 +51,11 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         self.LLOD_ = LLOD
         self.ULOD_ = ULOD
 
-        self.B_abs_max = B_abs_max
+        # self.B_abs_max = B_abs_max
         self.slope_guess = slope_guess
         self.slope_guess_num_points_to_use = slope_guess_num_points_to_use
         self.slope_is_positive = slope_direction_positive
-        self.asymptote_tolerance_perc = asymptote_tolerance_perc
+        # self.asymptote_tolerance_perc = asymptote_tolerance_perc
 
     def get_params(self, deep=False):
         if deep:
@@ -185,21 +183,8 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             self.guess_B_ = 1.0 if self.slope_is_positive else -1.0
 
         self.guess_C_ = np.mean(x_data)
-        self.guess_D_ = np.max(y_data)
+        self.guess_D_ = np.max(y_data) if self.guess_B_ > 0 else np.min(y_data)
         initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_]
-
-        # rationale: cannot fit logistic to exponential data
-        y_data_range = np.max(y_data) - np.min(y_data)
-        asymptote_bound_min = np.min(y_data) - 2 * y_data_range
-        asymptote_bound_max = np.max(y_data) + 2 * y_data_range
-
-        B_min = -self.B_abs_max if self.guess_B_ < 0 else np.finfo(float).eps
-        B_max = self.B_abs_max if self.guess_B_ >= 0 else np.finfo(float).eps
-
-        bounds = (
-            [asymptote_bound_min, B_min, -np.inf, asymptote_bound_min],
-            [asymptote_bound_max, B_max, np.inf, asymptote_bound_max],
-        )
 
         curve_fit_kwargs = {
             "f": self.four_param_logistic,
@@ -216,23 +201,6 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         # Perform the curve fit
         params, cov = curve_fit(**{**curve_fit_kwargs, **kwargs})
         self.A_, self.B_, self.C_, self.D_ = params
-
-        if np.abs(self.A_ - asymptote_bound_min) < (self.asymptote_tolerance_perc * y_data_range):
-            warnings.warn(
-                "A parameter is close to the lower asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
-            )
-        if np.abs(self.A_ - asymptote_bound_max) < (self.asymptote_tolerance_perc * y_data_range):
-            warnings.warn(
-                "A parameter is close to the upper asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
-            )
-        if np.abs(self.D_ - asymptote_bound_min) < (self.asymptote_tolerance_perc * y_data_range):
-            warnings.warn(
-                "D parameter is close to the lower asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
-            )
-        if np.abs(self.D_ - asymptote_bound_max) < (self.asymptote_tolerance_perc * y_data_range):
-            warnings.warn(
-                "D parameter is close to the upper asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
-            )
 
         self.cov_ = cov
         self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
