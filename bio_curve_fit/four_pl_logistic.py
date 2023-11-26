@@ -21,7 +21,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         slope_guess=True,
         slope_guess_num_points_to_use=3,
         slope_direction_positive: Optional[bool] = None,
-        asymptote_tolerance=0.01,
+        asymptote_tolerance_perc=0.01,
     ):
         """
         Four Parameter Logistic (4PL) model.
@@ -30,7 +30,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         :param slope_guess: Whether slope direction should be guessed from the data.  Not used if slope_direction_positive is set.
         :param slope_guess_num_points_to_use: Number of points (from beginning and end of data) to use when guessing slope direction.
         :param slope_direction_positive: Whether the slope should be positive or negative.
-        :param asymptote_tolerance: Tolerance for A and D parameters being close to the asymptote bounds; if either A or D is within this tolerance of the asymptote bound, data may be insufficient for a logistic regression fit.
+        :param asymptote_tolerance_perc: Tolerance for A and D parameters being close to the asymptote bounds; if either A or D is within this tolerance of the asymptote bound, data may be insufficient for a logistic regression fit.
         """
         # A is the minimum asymptote
         self.A_ = A
@@ -57,7 +57,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         self.slope_guess = slope_guess
         self.slope_guess_num_points_to_use = slope_guess_num_points_to_use
         self.slope_is_positive = slope_direction_positive
-        self.asymptote_tolerance = asymptote_tolerance
+        self.asymptote_tolerance_perc = asymptote_tolerance_perc
 
     def get_params(self, deep=False):
         if deep:
@@ -158,6 +158,8 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             weights = weight_func(y_data)
             absolute_sigma = True
 
+        x_data = np.float64(x_data)
+        y_data = np.float64(y_data)
         df_data = pd.DataFrame({"x": x_data, "y": y_data})
         df_data.sort_values(by="x", inplace=True)
 
@@ -187,11 +189,12 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_]
 
         # rationale: cannot fit logistic to exponential data
-        asymptote_bound_min = np.min(y_data) - 2 * (np.max(y_data) - np.min(y_data))
-        asymptote_bound_max = np.max(y_data) + 2 * (np.max(y_data) - np.min(y_data))
+        y_data_range = np.max(y_data) - np.min(y_data)
+        asymptote_bound_min = np.min(y_data) - 2 * y_data_range
+        asymptote_bound_max = np.max(y_data) + 2 * y_data_range
 
-        B_min = -self.B_abs_max if self.guess_B_ < 0 else 0
-        B_max = self.B_abs_max if self.guess_B_ >= 0 else 0
+        B_min = -self.B_abs_max if self.guess_B_ < 0 else np.finfo(float).eps
+        B_max = self.B_abs_max if self.guess_B_ >= 0 else np.finfo(float).eps
 
         bounds = (
             [asymptote_bound_min, B_min, -np.inf, asymptote_bound_min],
@@ -204,8 +207,8 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             "ydata": y_data,
             "maxfev": 10000,
             "p0": initial_guess,
-            "bounds": bounds,
-            "jac": self.jacobian,
+            # "bounds": bounds,
+            # "jac": self.jacobian,
             "sigma": weights,
             "absolute_sigma": absolute_sigma,
         }
@@ -214,19 +217,19 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         params, cov = curve_fit(**{**curve_fit_kwargs, **kwargs})
         self.A_, self.B_, self.C_, self.D_ = params
 
-        if np.abs(self.A_ - asymptote_bound_min) < self.asymptote_tolerance:
+        if np.abs(self.A_ - asymptote_bound_min) < (self.asymptote_tolerance_perc * y_data_range):
             warnings.warn(
                 "A parameter is close to the lower asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
             )
-        if np.abs(self.A_ - asymptote_bound_max) < self.asymptote_tolerance:
+        if np.abs(self.A_ - asymptote_bound_max) < (self.asymptote_tolerance_perc * y_data_range):
             warnings.warn(
                 "A parameter is close to the upper asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
             )
-        if np.abs(self.D_ - asymptote_bound_min) < self.asymptote_tolerance:
+        if np.abs(self.D_ - asymptote_bound_min) < (self.asymptote_tolerance_perc * y_data_range):
             warnings.warn(
                 "D parameter is close to the lower asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
             )
-        if np.abs(self.D_ - asymptote_bound_max) < self.asymptote_tolerance:
+        if np.abs(self.D_ - asymptote_bound_max) < (self.asymptote_tolerance_perc * y_data_range):
             warnings.warn(
                 "D parameter is close to the upper asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
             )
@@ -243,7 +246,9 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         z = (x_data / C) ** B
 
         partial_A = 1.0 / (1.0 + z)
-        partial_B = -(z * (A - D) * np.log(x_data / C)) / ((1.0 + z) ** 2)
+        partial_B = -(z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))) / (
+            (1.0 + z) ** 2
+        )
         partial_C = (B * z * (A - D)) / (C * (1.0 + z) ** 2)
         partial_D = 1.0 - 1.0 / (1.0 + z)
 
@@ -279,7 +284,8 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         But for samples of unknown concentration, we want to get the concentration as given
         response, which is what this function does.
         """
-        return self.C_ * (((self.A_ - self.D_) / (y - self.D_)) - 1) ** (1 / self.B_)  # type: ignore
+        z = ((self.A_ - self.D_) / (y - self.D_)) - 1
+        return self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
 
     def predict(self, x_data):
         if self.A_ is None or self.B_ is None or self.C_ is None or self.D_ is None:
