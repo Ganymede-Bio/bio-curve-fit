@@ -1,4 +1,9 @@
+## Setup
 
+```shell
+poetry install
+poetry shell
+```
 
 ## Tests
 

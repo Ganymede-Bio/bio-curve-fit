@@ -1,8 +1,13 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
 [tool.poetry]
 name = "bio-curve-fit"
-version = "0.1.6"
+version = "0.1.7"
 description = "Curve fitting algorithms for bio-assays with scikit-learn api"
-authors = ["Luke Schiefelbein <luke@ganymede.bio>"]
+authors = ["Luke Schiefelbein <luke@ganymede.bio>", 
+           "Benson Lee <benson@ganymede.bio>"]
 license = "MIT"
 readme = "README.md"
 packages = [{include = "bio_curve_fit"}]
@@ -22,6 +27,3 @@ data-science-types = ">=0.2.23"
 ruff = ">=0.1.5"
 ipykernel = "^6.26.0"
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

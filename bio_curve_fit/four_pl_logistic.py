@@ -1,13 +1,37 @@
 import numpy as np
-from scipy.optimize import curve_fit  # type: ignore
 import pandas as pd
+from scipy.optimize import curve_fit  # type: ignore
 from sklearn.base import BaseEstimator, RegressorMixin  # type: ignore
+from typing import Optional
+import warnings
 
 
 class FourPLLogistic(BaseEstimator, RegressorMixin):
     def __init__(
-        self, A=None, B=None, C=None, D=None, LLOD=None, ULOD=None, ULOD_y=None, LLOD_y=None
+        self,
+        A=None,
+        B=None,
+        C=None,
+        D=None,
+        LLOD=None,
+        ULOD=None,
+        ULOD_y=None,
+        LLOD_y=None,
+        B_abs_max=30,
+        slope_guess=True,
+        slope_guess_num_points_to_use=3,
+        slope_direction_positive: Optional[bool] = None,
+        asymptote_tolerance=0.01,
     ):
+        """
+        Four Parameter Logistic (4PL) model.
+
+        :param B_abs_max: Maximum absolute value of the Hill's slope (B) parameter.
+        :param slope_guess: Whether slope direction should be guessed from the data.  Not used if slope_direction_positive is set.
+        :param slope_guess_num_points_to_use: Number of points (from beginning and end of data) to use when guessing slope direction.
+        :param slope_direction_positive: Whether the slope should be positive or negative.
+        :param asymptote_tolerance: Tolerance for A and D parameters being close to the asymptote bounds; if either A or D is within this tolerance of the asymptote bound, data may be insufficient for a logistic regression fit.
+        """
         # A is the minimum asymptote
         self.A_ = A
         # B is the Hill's slope
@@ -29,6 +53,12 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         self.LLOD_ = LLOD
         self.ULOD_ = ULOD
 
+        self.B_abs_max = B_abs_max
+        self.slope_guess = slope_guess
+        self.slope_guess_num_points_to_use = slope_guess_num_points_to_use
+        self.slope_is_positive = slope_direction_positive
+        self.asymptote_tolerance = asymptote_tolerance
+
     def get_params(self, deep=False):
         if deep:
             return {
@@ -47,13 +77,13 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
                 "B": self.B_,
                 "C": self.C_,
                 "D": self.D_,
-            } 
-    
+            }
 
     @staticmethod
     def four_param_logistic(x, A, B, C, D):
         """4 Parameter Logistic (4PL) model."""
-        return ((A - D) / (1.0 + ((x / C) ** B))) + D
+        z = np.sign(x / C) * np.abs(x / C) ** B
+        return ((A - D) / (1.0 + z)) + D
 
     @staticmethod
     def inverse_variance_weight_function(y_data):
@@ -106,13 +136,13 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         ulod_x = self.predict_inverse(ulod)
         return llod_x, ulod_x, llod, ulod
 
-    def fit(self, x_data, y_data, weight_func=None, LOD_func=None):
+    def fit(self, x_data, y_data, weight_func=None, LOD_func=None, **kwargs):
         """
         Fit the 4 Parameter Logistic (4PL) model.
 
-        x_data: x data points
-        y_data: y data points
-        weight_func: optional Function that calculates weights from y_data. This is
+        :param x_data: x data points
+        :param y_data: y data points
+        :param weight_func: optional Function that calculates weights from y_data. This is
             passed into the `curve_fit` function where the function minimized is `sum
             ((r / weight_func(y_data)) ** 2)` where r is the residuals.
             Thus for a typical 1/y^2 weighting, `weight_func` should be `lambda
@@ -128,25 +158,79 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             weights = weight_func(y_data)
             absolute_sigma = True
 
+        df_data = pd.DataFrame({"x": x_data, "y": y_data})
+        df_data.sort_values(by="x", inplace=True)
+
         # Initial guess for the parameters
-        self.guess_A_ = min(y_data)
-        self.guess_B_ = 1.0
+        self.guess_A_ = np.min(y_data)
+
+        if self.slope_guess:
+            self.guess_B_ = (
+                1.0
+                if np.mean(
+                    df_data.iloc[: np.minimum(self.slope_guess_num_points_to_use, len(df_data))][
+                        "y"
+                    ]
+                )
+                < np.mean(
+                    df_data.iloc[-np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :][
+                        "y"
+                    ]
+                )
+                else -1.0
+            )
+        else:
+            self.guess_B_ = 1.0 if self.slope_is_positive else -1.0
+
         self.guess_C_ = np.mean(x_data)
-        self.guess_D_ = max(y_data)
+        self.guess_D_ = np.max(y_data)
         initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_]
 
-        # Perform the curve fit
-        params, cov = curve_fit(
-            self.four_param_logistic,
-            x_data,
-            y_data,
-            p0=initial_guess,
-            maxfev=10000,
-            # jac=self.jacobian,
-            sigma=weights,
-            absolute_sigma=absolute_sigma,
+        # rationale: cannot fit logistic to exponential data
+        asymptote_bound_min = np.min(y_data) - 2 * (np.max(y_data) - np.min(y_data))
+        asymptote_bound_max = np.max(y_data) + 2 * (np.max(y_data) - np.min(y_data))
+
+        B_min = -self.B_abs_max if self.guess_B_ < 0 else 0
+        B_max = self.B_abs_max if self.guess_B_ >= 0 else 0
+
+        bounds = (
+            [asymptote_bound_min, B_min, -np.inf, asymptote_bound_min],
+            [asymptote_bound_max, B_max, np.inf, asymptote_bound_max],
         )
+
+        curve_fit_kwargs = {
+            "f": self.four_param_logistic,
+            "xdata": x_data,
+            "ydata": y_data,
+            "maxfev": 10000,
+            "p0": initial_guess,
+            "bounds": bounds,
+            "jac": self.jacobian,
+            "sigma": weights,
+            "absolute_sigma": absolute_sigma,
+        }
+
+        # Perform the curve fit
+        params, cov = curve_fit(**{**curve_fit_kwargs, **kwargs})
         self.A_, self.B_, self.C_, self.D_ = params
+
+        if np.abs(self.A_ - asymptote_bound_min) < self.asymptote_tolerance:
+            warnings.warn(
+                "A parameter is close to the lower asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
+            )
+        if np.abs(self.A_ - asymptote_bound_max) < self.asymptote_tolerance:
+            warnings.warn(
+                "A parameter is close to the upper asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
+            )
+        if np.abs(self.D_ - asymptote_bound_min) < self.asymptote_tolerance:
+            warnings.warn(
+                "D parameter is close to the lower asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
+            )
+        if np.abs(self.D_ - asymptote_bound_max) < self.asymptote_tolerance:
+            warnings.warn(
+                "D parameter is close to the upper asymptote bound.  This indicates that the data may be insufficient to fit a logistic regression model, even if R^2 is high."
+            )
+
         self.cov_ = cov
         self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
         return self
@@ -154,18 +238,16 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
     @staticmethod
     def jacobian(x_data, A, B, C, D):
         """
-        TODO: still need to double-check the math here.
+        Jacobian matrix of the 4PL function with respect to A, B, C, D.
         """
-        # Partial derivatives of the 4PL function with respect to A, B, C, D
-        partial_A = (1.0 - ((x_data / C) ** B)) / (1.0 + ((x_data / C) ** B))
-        partial_B = (
-            -((A - D) * (x_data / C) ** B * np.log(x_data / C)) / (1.0 + ((x_data / C) ** B)) ** 2
-        )
-        partial_C = (B * (A - D) * (x_data / C) ** B) / (C * (1.0 + ((x_data / C) ** B)) ** 2)
-        partial_D = 1.0 / (1.0 + ((x_data / C) ** B))
+        z = (x_data / C) ** B
 
-        # Jacobian matrix
-        J = np.array([partial_A, partial_B, partial_C, partial_D]).T
+        partial_A = 1.0 / (1.0 + z)
+        partial_B = -(z * (A - D) * np.log(x_data / C)) / ((1.0 + z) ** 2)
+        partial_C = (B * z * (A - D)) / (C * (1.0 + z) ** 2)
+        partial_D = 1.0 - 1.0 / (1.0 + z)
+
+        J = np.transpose([partial_A, partial_B, partial_C, partial_D])
         return J
 
     def predict_std_dev(self, x_data):
@@ -196,7 +278,6 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         y-values, so that variance in response is modeled for a given known concentration.
         But for samples of unknown concentration, we want to get the concentration as given
         response, which is what this function does.
-
         """
         return self.C_ * (((self.A_ - self.D_) / (y - self.D_)) - 1) ** (1 / self.B_)  # type: ignore
 
