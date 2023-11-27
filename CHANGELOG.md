@@ -6,10 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- Prediction intervals method
 ### Fixed
 - Jacobian calculation for 4PL model
 ### Changed
 - Modified 4PL formula to avoid warning associated with complex numbers
+- Renamed std dev method to confidence interval to clarify meaning
+- Split fit based on whether model is positively or negatively sloping
 ### Deprecated
 ### Removed
 ### Security
