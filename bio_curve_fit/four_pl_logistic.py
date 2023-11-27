@@ -65,7 +65,11 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
     @staticmethod
     def four_param_logistic(x, A, B, C, D):
         """4 Parameter Logistic (4PL) model."""
+
+        # For addressing fractional powers of negative numbers
+        # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
         z = np.sign(x / C) * np.abs(x / C) ** B
+
         return ((A - D) / (1.0 + z)) + D
 
     @staticmethod
@@ -241,6 +245,9 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
 
         """
         z = ((self.A_ - self.D_) / (y - self.D_)) - 1
+
+        # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
+        # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
         return self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
 
     def predict(self, x_data):
