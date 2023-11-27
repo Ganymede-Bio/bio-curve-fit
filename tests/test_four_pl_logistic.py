@@ -103,4 +103,4 @@ def test_std_dev():
     )
     sdev = model.predict_std_dev(test_x)
     print(sdev)
-    raise AssertionError("stop")
+    # raise AssertionError("stop")
