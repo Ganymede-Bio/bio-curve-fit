@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 from bio_curve_fit.four_pl_logistic import FourPLLogistic
 from bio_curve_fit.plotting import plot_curve
 

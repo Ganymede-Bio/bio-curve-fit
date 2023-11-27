@@ -1,9 +1,11 @@
+import io
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from bio_curve_fit.four_pl_logistic import FourPLLogistic
-import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
-import io
+
+from bio_curve_fit.four_pl_logistic import FourPLLogistic
 
 
 def plot_curve(
@@ -50,7 +52,7 @@ def plot_curve(
     plt.axhline(ulod_response, color="blue", linestyle="--", label="ULOD")  # type: ignore
     plt.legend()
     if show_plot:
-            plt.show()
+        plt.show()
     # Save the plot to a BytesIO object
     buf = io.BytesIO()
     plt.savefig(buf, format="png")

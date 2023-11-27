@@ -1,9 +1,9 @@
+from typing import Optional
+
 import numpy as np
-from scipy.stats import t
 import pandas as pd
 from scipy.optimize import curve_fit  # type: ignore
 from sklearn.base import BaseEstimator, RegressorMixin  # type: ignore
-from typing import Optional
 
 
 class FourPLLogistic(BaseEstimator, RegressorMixin):
