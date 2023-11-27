@@ -2,11 +2,22 @@ import numpy as np
 from scipy.optimize import curve_fit  # type: ignore
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin  # type: ignore
+from typing import Optional
 
 
 class FourPLLogistic(BaseEstimator, RegressorMixin):
     def __init__(
-        self, A=None, B=None, C=None, D=None, LLOD=None, ULOD=None, ULOD_y=None, LLOD_y=None
+        self,
+        A=None,
+        B=None,
+        C=None,
+        D=None,
+        LLOD=None,
+        ULOD=None,
+        ULOD_y=None,
+        LLOD_y=None,
+        slope_direction_positive: Optional[bool] = None,
+        slope_guess_num_points_to_use: int = 3,
     ):
         # A is the minimum asymptote
         self.A_ = A
@@ -28,6 +39,8 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         # Estimated Limits of Detection for concentration
         self.LLOD_ = LLOD
         self.ULOD_ = ULOD
+        self.slope_direction_positive = slope_direction_positive
+        self.slope_guess_num_points_to_use = slope_guess_num_points_to_use
 
     def get_params(self, deep=False):
         if deep:
@@ -47,13 +60,13 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
                 "B": self.B_,
                 "C": self.C_,
                 "D": self.D_,
-            } 
-    
+            }
 
     @staticmethod
     def four_param_logistic(x, A, B, C, D):
         """4 Parameter Logistic (4PL) model."""
-        return ((A - D) / (1.0 + ((x / C) ** B))) + D
+        z = np.sign(x / C) * np.abs(x / C) ** B
+        return ((A - D) / (1.0 + z)) + D
 
     @staticmethod
     def inverse_variance_weight_function(y_data):
@@ -106,7 +119,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         ulod_x = self.predict_inverse(ulod)
         return llod_x, ulod_x, llod, ulod
 
-    def fit(self, x_data, y_data, weight_func=None, LOD_func=None):
+    def fit(self, x_data, y_data, weight_func=None, LOD_func=None, **kwargs):
         """
         Fit the 4 Parameter Logistic (4PL) model.
 
@@ -118,6 +131,11 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             Thus for a typical 1/y^2 weighting, `weight_func` should be `lambda
             y_data: y_data`
         """
+        x_data = np.float64(x_data)
+        y_data = np.float64(y_data)
+        df_data = pd.DataFrame({"x": x_data, "y": y_data})
+        df_data.sort_values(by="x", inplace=True)
+
         if LOD_func is None:
             # default LOD_func is to use replicate variance
             LOD_func = self._calculate_lod_replicate_variance
@@ -129,23 +147,45 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             absolute_sigma = True
 
         # Initial guess for the parameters
-        self.guess_A_ = min(y_data)
-        self.guess_B_ = 1.0
+        self.guess_A_ = np.min(y_data)
+        if self.slope_direction_positive is not None:
+            self.guess_B_ = 1.0 if self.slope_direction_positive else -1.0
+        else:
+            self.guess_B_ = (
+                1.0
+                if np.mean(
+                    df_data.iloc[: np.minimum(self.slope_guess_num_points_to_use, len(df_data))][
+                        "y"
+                    ]
+                )
+                < np.mean(
+                    df_data.iloc[-np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :][
+                        "y"
+                    ]
+                )
+                else -1.0
+            )
         self.guess_C_ = np.mean(x_data)
-        self.guess_D_ = max(y_data)
+        self.guess_D_ = np.max(y_data)
         initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_]
 
-        # Perform the curve fit
-        params, cov = curve_fit(
-            self.four_param_logistic,
-            x_data,
-            y_data,
-            p0=initial_guess,
-            maxfev=10000,
+        curve_fit_kwargs = {
+            "f": self.four_param_logistic,
+            "xdata": x_data,
+            "ydata": y_data,
+            "p0": initial_guess,
+            "maxfev": 10000,
             # jac=self.jacobian,
-            sigma=weights,
-            absolute_sigma=absolute_sigma,
-        )
+            "sigma": weights,
+            "absolute_sigma": absolute_sigma,
+        }
+
+        # overwrite parameters with any kwargs passed in
+        for k, v in kwargs.items():
+            curve_fit_kwargs[k] = v
+
+        # Perform the curve fit
+        params, cov = curve_fit(**curve_fit_kwargs)
         self.A_, self.B_, self.C_, self.D_ = params
         self.cov_ = cov
         self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
@@ -154,15 +194,16 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
     @staticmethod
     def jacobian(x_data, A, B, C, D):
         """
-        TODO: still need to double-check the math here.
+        Jacobian matrix of the 4PL function with respect to A, B, C, D.
         """
-        # Partial derivatives of the 4PL function with respect to A, B, C, D
-        partial_A = (1.0 - ((x_data / C) ** B)) / (1.0 + ((x_data / C) ** B))
-        partial_B = (
-            -((A - D) * (x_data / C) ** B * np.log(x_data / C)) / (1.0 + ((x_data / C) ** B)) ** 2
+        z = (x_data / C) ** B
+
+        partial_A = 1.0 / (1.0 + z)
+        partial_B = -(z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))) / (
+            (1.0 + z) ** 2
         )
-        partial_C = (B * (A - D) * (x_data / C) ** B) / (C * (1.0 + ((x_data / C) ** B)) ** 2)
-        partial_D = 1.0 / (1.0 + ((x_data / C) ** B))
+        partial_C = (B * z * (A - D)) / (C * (1.0 + z) ** 2)
+        partial_D = 1.0 - 1.0 / (1.0 + z)
 
         # Jacobian matrix
         J = np.array([partial_A, partial_B, partial_C, partial_D]).T
@@ -170,7 +211,9 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
 
     def predict_std_dev(self, x_data):
         """
+        Predict confidence intervals of data points using Delta method (first order Taylor-Series approximation).
         TODO: still need to double-check the math here.
+
         See:
             https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_graphing_confidence_and_predic.htm
             https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_how_confidence_and_prediction_.htm
@@ -182,7 +225,6 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
                 "Covariance matrix is not available. Please call 'fit' with appropriate data."
             )
         J = self.jacobian(x_data, self.A_, self.B_, self.C_, self.D_)
-        # Prediction variance
         pred_var = np.sum((J @ self.cov_) * J, axis=1)
 
         return np.sqrt(pred_var)
@@ -198,7 +240,8 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         response, which is what this function does.
 
         """
-        return self.C_ * (((self.A_ - self.D_) / (y - self.D_)) - 1) ** (1 / self.B_)  # type: ignore
+        z = ((self.A_ - self.D_) / (y - self.D_)) - 1
+        return self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
 
     def predict(self, x_data):
         if self.A_ is None or self.B_ is None or self.C_ is None or self.D_ is None:

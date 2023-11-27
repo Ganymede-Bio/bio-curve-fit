@@ -1,4 +1,11 @@
+## Development Setup
 
+To install dependencies, run the following commands from the root directory of the project:
+
+```shell
+poetry install
+poetry shell
+```
 
 ## Tests
 
