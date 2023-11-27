@@ -93,3 +93,17 @@ def test_fit2():
 
     assert model.ULOD_y_ == 220006.8397685415
     assert model.LLOD_y_ == 798.7000577483678
+
+
+def test_std_dev():
+    model = FourPLLogistic().fit(
+        test_x,
+        test_y,
+    )
+    ci = model.predict_confidence_band(test_x)
+    pi = model.predict_prediction_band(test_x, test_y)
+
+    print(ci)
+    print(pi)
+
+    # raise AssertionError("stop")
