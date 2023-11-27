@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bio-curve-fit"
-version = "0.1.6"
+version = "0.1.7"
 description = "Curve fitting algorithms for bio-assays with scikit-learn api"
 authors = ["Luke Schiefelbein <luke@ganymede.bio>"]
 license = "MIT"
