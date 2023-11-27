@@ -99,8 +99,11 @@ def test_std_dev():
     model = FourPLLogistic().fit(
         test_x,
         test_y,
-        weight_func=FourPLLogistic.inverse_variance_weight_function,
     )
-    sdev = model.predict_std_dev(test_x)
-    print(sdev)
+    ci = model.predict_confidence_band(test_x)
+    pi = model.predict_prediction_band(test_x, test_y)
+
+    print(ci)
+    print(pi)
+
     # raise AssertionError("stop")

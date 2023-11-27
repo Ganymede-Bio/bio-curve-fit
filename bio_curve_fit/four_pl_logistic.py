@@ -1,6 +1,7 @@
 import numpy as np
-from scipy.optimize import curve_fit  # type: ignore
+from scipy.stats import t
 import pandas as pd
+from scipy.optimize import curve_fit  # type: ignore
 from sklearn.base import BaseEstimator, RegressorMixin  # type: ignore
 from typing import Optional
 
@@ -213,9 +214,9 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         J = np.array([partial_A, partial_B, partial_C, partial_D]).T
         return J
 
-    def predict_std_dev(self, x_data):
+    def predict_confidence_band(self, x_data):
         """
-        Predict confidence intervals of data points using Delta method (first order Taylor-Series approximation).
+        Predict confidence bands of data points.
         TODO: still need to double-check the math here.
 
         See:
@@ -232,6 +233,16 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         pred_var = np.sum((J @ self.cov_) * J, axis=1)
 
         return np.sqrt(pred_var)
+
+    def predict_prediction_band(self, x_data, y_data):
+        """
+        Predict prediction bands of data points.
+        TODO: still need to double-check the math here.
+        """
+        ss = (y_data - self.predict(x_data)) ** 2
+        df = len(x_data) - 4  # 4 parameters
+
+        return np.sqrt(self.predict_confidence_band(x_data) ** 2 * ss / df)
 
     def predict_inverse(self, y):
         # TODO: could merge this with `predict` and make it a parameter
