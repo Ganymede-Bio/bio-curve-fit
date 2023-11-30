@@ -24,6 +24,10 @@ coverage run -m pytest
 coverage report
 ```
 
+## Examples
+
+Please add examples for any new functionality. Examples should be added to the `examples` directory as jupyter notebooks with Google Colab links. Note the the primary users of this package are likely to be biologists with little to no programming experience, so examples should be as simple as possible. 
+
 ## Style
 
 This project uses black, ruff, isort, and mypy. Try to get typing working as best you can, but feel free to add `#type ignore` comments if it feels like more work is going toward satisfying mypy than making this package useful.

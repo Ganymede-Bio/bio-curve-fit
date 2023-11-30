@@ -108,14 +108,13 @@ def test_readme_example():
     model = FourPLLogistic()
 
     # create some example data
-    standard_concentrations = [0, 1, 2, 3, 4, 5]
-    standard_responses = [0, 0.5, 0.75, 0.9, 0.95, 1]
+    standard_concentrations = [1, 2, 3, 4, 5]
+    standard_responses = [0.5, 0.55, 0.9, 1.25, 1.55]
 
     # fit the model using an inverse variance weight function (1/y^2)
     model = FourPLLogistic().fit(
         standard_concentrations,
         standard_responses,
-        weight_func=FourPLLogistic.inverse_variance_weight_function,
     )
 
     # interpolate the response at given concentrations
@@ -125,6 +124,7 @@ def test_readme_example():
     # interpolate the concentration at given responses
     values = model.predict_inverse([0.1, 1.0])
     assert pd.notna(values).all()
+    plot_standard_curve(standard_concentrations, standard_responses, model)
 
 
 def test_std_dev():
