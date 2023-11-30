@@ -1,15 +1,17 @@
 
 # bio-curve-fit
 
-A Python package for fitting dose-response and standard curves. Designed to follow the api of [scikit-learn](https://scikit-learn.org/stable/).
+A Python package for fitting common dose-response and standard curve models. Designed to follow the [scikit-learn](https://scikit-learn.org/stable/) api.
 
-## Installation
+## Quickstart 
+
+### Installation
 
 ```shell
 pip install bio-curve-fit
 ```
 
-Example usage:
+### Example usage:
 
 ```python
 from bio_curve_fit.logistic import FourPLLogistic

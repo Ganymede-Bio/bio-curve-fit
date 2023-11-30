@@ -9,7 +9,7 @@ poetry install
 poetry shell
 ```
 
-Install pre-commit hooks for auto format checking
+Install pre-commit hooks for automatic style and type checking:
 
 ```console
 $ pre-commit install
@@ -26,10 +26,10 @@ coverage report
 
 ## Style
 
-This project uses black, ruff, isort, and mypy. Try to get typing working as best you can, but feel free to add `#type ignore` comments if it's feeling like more work is going to satisfying mypy than making the project more useful.
+This project uses black, ruff, isort, and mypy. Try to get typing working as best you can, but feel free to add `#type ignore` comments if it feels like more work is going toward satisfying mypy than making this package useful.
 
 ## TODOs
 
 - [ ] Implement other [common models](https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_models_built-in_to_prism.htm)
-	- [ ] 5PL logistic models is a top priority.
+	- [ ] 5PL logistic model is a top priority.
 - [ ] Ensure compatibility with other versions of python ex 3.8, and other operating systems.
