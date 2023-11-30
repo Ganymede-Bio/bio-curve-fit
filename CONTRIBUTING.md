@@ -26,7 +26,7 @@ coverage report
 
 ## Examples
 
-Please add examples for any new functionality. Examples should be added to the `examples` directory as jupyter notebooks with Google Colab links. Note the the primary users of this package are likely to be biologists with little to no programming experience, so examples should be as simple as possible. 
+Please add examples for any new functionality. Examples should be added to the `examples` directory as jupyter notebooks with [Google Colab links](https://openincolab.com/). Note the the primary users of this package are likely to be biologists with little to no programming experience, so examples should be as simple as possible. 
 
 ## Style
 
