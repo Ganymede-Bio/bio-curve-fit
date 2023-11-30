@@ -31,8 +31,8 @@ jobs:
 
     - name: Install dependencies
       run: |
-        $HOME/.poetry/bin/poetry install
+        poetry install
 
     - name: Run pytest
       run: |
-        $HOME/.poetry/bin/poetry run pytest
+        poetry run pytest
