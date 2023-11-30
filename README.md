@@ -48,7 +48,7 @@ plot_standard_curve(standard_concentrations, standard_responses, model, show_plo
 
 ## Examples
 
-See [examples](./examples) for more detailed usage.
+See the [example notebook](./examples/four_pl_logistic/four_pl_fit.ipynb) for more detailed usage.
 
 ## Contributing
 
