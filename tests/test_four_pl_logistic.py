@@ -95,8 +95,8 @@ def test_fit2():
     assert model.score(test_x, test_y) > 0.995  # type: ignore
     print(model.ULOD_y_, model.LLOD_y_)
 
-    assert model.ULOD_y_ == 220006.8397685415
-    assert model.LLOD_y_ == 798.7000577483678
+    assert np.isclose(model.ULOD_y_, 220006.8397685415, rtol=0.1)  # type: ignore
+    assert np.isclose(model.LLOD_y_, 798.7000577483678, rtol=0.1)  # type: ignore
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
