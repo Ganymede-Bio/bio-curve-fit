@@ -2,11 +2,13 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import curve_fit  # type: ignore
-from sklearn.base import BaseEstimator, RegressorMixin  # type: ignore
+from scipy.optimize import curve_fit
+from sklearn.base import BaseEstimator, RegressorMixin
+
+from .base import BaseStandardCurve
 
 
-class FourPLLogistic(BaseEstimator, RegressorMixin):
+class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
     def __init__(
         self,
         A=None,
@@ -42,6 +44,13 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         self.ULOD_ = ULOD
         self.slope_direction_positive = slope_direction_positive
         self.slope_guess_num_points_to_use = slope_guess_num_points_to_use
+
+    def check_fit(self):
+        if self.A_ is None or self.B_ is None or self.C_ is None or self.D_ is None:
+            raise Exception(
+                "Model is not fit yet. Please call 'fit' with appropriate data"
+                " or initialize the model object with non-null parameters."
+            )
 
     def get_params(self, deep=False):
         if deep:
@@ -92,7 +101,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         Calculate the Lower and Upper Limits of Detection (LLOD and ULOD) using variance
         of replicate max and min concentration standards. It ignore zero concentration
         standards. If there are no replicates, the standard deviation zero
-        TODO: some minimum variance should be used.
+        Possible TODO: sometimes a minimum variance is used in other software.
 
         In the notation below we assume the response signal is the Y-axis and the
         concentration is the X-axis.
@@ -109,11 +118,11 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
 
         x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
         # remove zeros from x_data
-        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]  # type: ignore
-        x_min = np.min(x_indexed_y_data.index)  # type: ignore
-        x_max = np.max(x_indexed_y_data.index)  # type: ignore
-        bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()  # type: ignore
-        top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()  # type: ignore
+        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]
+        x_min = np.min(x_indexed_y_data.index)
+        x_max = np.max(x_indexed_y_data.index)
+        bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()
+        top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()
 
         # Calculate LLOD and ULOD of RESPONSE SIGNAL
         llod = self.predict(x_min) + (lower_std_dev_multiplier * bottom_std_dev)
@@ -152,26 +161,27 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             absolute_sigma = True
 
         # Initial guess for the parameters
-        self.guess_A_ = np.min(y_data)
+        self.guess_A_ = np.min(y_data)  # type: ignore
         if self.slope_direction_positive is not None:
             self.guess_B_ = 1.0 if self.slope_direction_positive else -1.0
         else:
+            # type: ignore
             self.guess_B_ = (
                 1.0
                 if np.mean(
-                    df_data.iloc[: np.minimum(self.slope_guess_num_points_to_use, len(df_data))][
+                    df_data.iloc[: np.minimum(self.slope_guess_num_points_to_use, len(df_data))][  # type: ignore
                         "y"
                     ]
                 )
                 < np.mean(
-                    df_data.iloc[-np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :][
+                    df_data.iloc[-np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :][  # type: ignore
                         "y"
                     ]
                 )
                 else -1.0
             )
-        self.guess_C_ = np.mean(x_data)
-        self.guess_D_ = np.max(y_data)
+        self.guess_C_ = np.mean(x_data)  # type: ignore
+        self.guess_D_ = np.max(y_data)  # type: ignore
         initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_]
 
         curve_fit_kwargs = {
@@ -180,7 +190,6 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
             "ydata": y_data,
             "p0": initial_guess,
             "maxfev": 10000,
-            # jac=self.jacobian,
             "sigma": weights,
             "absolute_sigma": absolute_sigma,
         }
@@ -204,7 +213,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         z = (x_data / C) ** B
 
         partial_A = 1.0 / (1.0 + z)
-        partial_B = -(z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))) / (
+        partial_B = -(z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))) / (  # type: ignore
             (1.0 + z) ** 2
         )
         partial_C = (B * z * (A - D)) / (C * (1.0 + z) ** 2)
@@ -255,14 +264,13 @@ class FourPLLogistic(BaseEstimator, RegressorMixin):
         response, which is what this function does.
 
         """
-        z = ((self.A_ - self.D_) / (y - self.D_)) - 1
+        self.check_fit()
+        z = ((self.A_ - self.D_) / (y - self.D_)) - 1  # type: ignore
 
         # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
         return self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
 
     def predict(self, x_data):
-        if self.A_ is None or self.B_ is None or self.C_ is None or self.D_ is None:
-            raise Exception("Model is not fitted yet. Please call 'fit' with appropriate data.")
-
+        self.check_fit()
         return self.four_param_logistic(x_data, self.A_, self.B_, self.C_, self.D_)
