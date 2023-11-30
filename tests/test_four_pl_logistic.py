@@ -1,14 +1,15 @@
 import numpy as np
 import pandas as pd
+import pytest
 
-from bio_curve_fit.four_pl_logistic import FourPLLogistic
-from bio_curve_fit.plotting import plot_curve
+from bio_curve_fit.logistic import FourPLLogistic
+from bio_curve_fit.plotting import plot_standard_curve
 
 # set a seed for reproducibility
 np.random.seed(42)
 
 
-def test_fit():
+def test_fit_and_plot():
     TEST_PARAMS = [1.0, 1.0, 2.0, 3.0]
 
     x_data = np.logspace(0.00001, 7, 100, base=np.e)  # type: ignore
@@ -21,13 +22,15 @@ def test_fit():
         x_data, y_data, weight_func=FourPLLogistic.inverse_variance_weight_function
     )
 
+    # model should recover parameters used to generate the data
     params = list(model.get_params().values())
     assert np.isclose(params, TEST_PARAMS, rtol=0.4).all()  # type: ignore
 
     r2 = model.score(x_data, y_data)
     assert r2 > 0.995
 
-    plot_curve(x_data, y_data, model)
+    # test plotting
+    plot_standard_curve(x_data, y_data, model)
 
     # test __repr__
     print(model)
@@ -88,12 +91,40 @@ def test_fit2():
     )
     print("Params:", model.get_params())
     print(model.predict_inverse(0.1))
-    plot_curve(test_x, test_y, model)
+    plot_standard_curve(test_x, test_y, model)
     assert model.score(test_x, test_y) > 0.995  # type: ignore
     print(model.ULOD_y_, model.LLOD_y_)
 
     assert model.ULOD_y_ == 220006.8397685415
     assert model.LLOD_y_ == 798.7000577483678
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_readme_example():
+    """
+    ensure that the example in the README works
+    """
+    # Instantiate model
+    model = FourPLLogistic()
+
+    # create some example data
+    standard_concentrations = [0, 1, 2, 3, 4, 5]
+    standard_responses = [0, 0.5, 0.75, 0.9, 0.95, 1]
+
+    # fit the model using an inverse variance weight function (1/y^2)
+    model = FourPLLogistic().fit(
+        standard_concentrations,
+        standard_responses,
+        weight_func=FourPLLogistic.inverse_variance_weight_function,
+    )
+
+    # interpolate the response at given concentrations
+    values = model.predict([1.5, 2.5])
+    assert pd.notna(values).all()
+
+    # interpolate the concentration at given responses
+    values = model.predict_inverse([0.1, 1.0])
+    assert pd.notna(values).all()
 
 
 def test_std_dev():
@@ -106,5 +137,3 @@ def test_std_dev():
 
     print(ci)
     print(pi)
-
-    # raise AssertionError("stop")

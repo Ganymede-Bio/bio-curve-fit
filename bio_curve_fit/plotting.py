@@ -5,13 +5,13 @@ import numpy as np
 import pandas as pd
 from matplotlib.ticker import ScalarFormatter
 
-from bio_curve_fit.four_pl_logistic import FourPLLogistic
+from .base import BaseStandardCurve
 
 
-def plot_curve(
+def plot_standard_curve(
     x_data,
     y_data,
-    fitted_model: FourPLLogistic,
+    fitted_model: BaseStandardCurve,
     title="4PL Curve Fit",
     x_label="Concentration",
     y_label="Response to ECL",

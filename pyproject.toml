@@ -21,6 +21,9 @@ pytest = ">=7.4.3"
 data-science-types = ">=0.2.23"
 ruff = ">=0.1.5"
 ipykernel = "^6.26.0"
+pre-commit = "^3.5.0"
+isort = "^5.12.0"
+coverage = "^7.3.2"
 
 [build-system]
 requires = ["poetry-core"]
