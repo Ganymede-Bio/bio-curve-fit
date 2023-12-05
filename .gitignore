@@ -2,3 +2,5 @@
 .vscode
 __pycache__
 .coverage
+.venv
+.mypy_cache

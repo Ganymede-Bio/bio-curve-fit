@@ -12,7 +12,7 @@ def plot_standard_curve(
     x_data,
     y_data,
     fitted_model: BaseStandardCurve,
-    title="4PL Curve Fit",
+    title="Standard Curve Fit",
     x_label="Concentration",
     y_label="Response",
     show_plot: bool = False,
