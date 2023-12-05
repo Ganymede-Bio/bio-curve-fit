@@ -30,7 +30,7 @@ Please add examples for any new functionality. Examples should be added to the `
 
 ## Style
 
-This project uses black, ruff, isort, and mypy. Try to get typing working as best you can, but feel free to add `#type ignore` comments if it feels like more work is going toward satisfying mypy than making this package useful.
+This project uses black, ruff, isort, and mypy. Try to get typing working as best you can, but feel free to add `# type ignore` comments if it feels like more work is going toward satisfying mypy than making this package useful.
 
 ## TODOs
 
