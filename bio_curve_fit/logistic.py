@@ -226,7 +226,6 @@ class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
     def predict_confidence_band(self, x_data):
         """
         Predict confidence bands of data points.
-        TODO: still need to double-check the math here.
 
         See:
             https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_graphing_confidence_and_predic.htm
@@ -254,7 +253,6 @@ class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
         return np.sqrt(self.predict_confidence_band(x_data) ** 2 * ss / df)
 
     def predict_inverse(self, y):
-        # TODO: could merge this with `predict` and make it a parameter
         """Inverse 4 Parameter Logistic (4PL) model.
 
         Used for calculating the x-value for a given y-value.
