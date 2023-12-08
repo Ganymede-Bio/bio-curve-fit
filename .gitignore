@@ -4,3 +4,4 @@ __pycache__
 .coverage
 .venv
 .mypy_cache
+dist

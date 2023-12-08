@@ -1,8 +1,8 @@
-name: Publish Python Package to PyPI
-
+name: Publish Packages Testpypi
 on:
-  release:
-    types: [created]
+  push:
+    branches:
+      - 'main'
 
 jobs:
   build-and-publish:
@@ -21,7 +21,7 @@ jobs:
 
     - name: Build and Publish to PyPI
       env:
-        POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_API_TOKEN }}
+        POETRY_TESTPYPI_TOKEN: ${{ secrets.TESTPYPI_API_TOKEN }}
       run: |
-        poetry config pypi-token.pypi $POETRY_PYPI_TOKEN_PYPI
-        poetry publish --build
+        poetry config pypi-token.testpypi $POETRY_TESTPYPI_TOKEN
+        poetry publish --build --repository testpypi
