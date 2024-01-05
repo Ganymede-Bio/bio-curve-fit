@@ -11,6 +11,14 @@ A Python package for fitting common dose-response and standard curve models. Des
 pip install bio-curve-fit
 ```
 
+
+We recommend using python [virtual environments](https://docs.python.org/3/library/venv.html) to manage your python packages in an isolated environment. Example:
+
+```shell
+python -m venv venvname
+source venvname/bin/activate
+```
+
 ### Example usage:
 
 ```python
@@ -25,7 +33,7 @@ standard_responses = [0.5, 0.55, 0.9, 1.25, 1.55]
 
 
 # fit the model
-model = FourPLLogistic().fit(
+model.fit(
 	standard_concentrations, 
 	standard_responses, 
 )
