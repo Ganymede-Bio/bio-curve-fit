@@ -111,8 +111,8 @@ def test_readme_example():
     standard_concentrations = [1, 2, 3, 4, 5]
     standard_responses = [0.5, 0.55, 0.9, 1.25, 1.55]
 
-    # fit the model using an inverse variance weight function (1/y^2)
-    model = FourPLLogistic().fit(
+    # fit the model
+    model.fit(
         standard_concentrations,
         standard_responses,
     )
