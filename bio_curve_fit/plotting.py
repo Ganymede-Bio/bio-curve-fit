@@ -51,6 +51,7 @@ def plot_standard_curve(
     plt.axhline(llod_response, color="red", linestyle="--", label="LLOD")  # type: ignore
     plt.axhline(ulod_response, color="blue", linestyle="--", label="ULOD")  # type: ignore
     plt.legend()
+    plt.tight_layout()
     if show_plot:
         plt.show()
     # Save the plot to a BytesIO object
