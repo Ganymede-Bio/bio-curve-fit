@@ -30,7 +30,7 @@ def test_fit_and_plot():
     assert r2 > 0.995
 
     # test plotting
-    plot_standard_curve(x_data, y_data, model)
+    plot_standard_curve(x_data, y_data, model, llod_kwargs={"color": "pink"})
 
     # test __repr__
     print(model)
