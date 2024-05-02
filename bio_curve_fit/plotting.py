@@ -37,7 +37,7 @@ def plot_standard_curve(
     - data_kwargs (dict, optional): Keyword arguments for the scatter function for data points. Default is {'label': 'Data', 's': 12}.
     - llod_kwargs (dict, optional): Keyword arguments for the axhline function for the Lower Limit of Detection line. Default is {'color': 'red', 'linestyle': '--', 'label': 'LLOD'}.
     - ulod_kwargs (dict, optional): Keyword arguments for the axhline function for the Upper Limit of Detection line. Default is {'color': 'blue', 'linestyle': '--', 'label': 'ULOD'}.
-    - plot_kwargs (dict, optional): General keyword arguments for further plot customizations. This can include 'title_kwargs' for title properties and 'savefig_kwargs' for savefig properties, and 'formatter' for the x-axis formatter. Default is Log.
+    - plot_kwargs (dict, optional): General keyword arguments for further plot customizations. This can include 'title_kwargs' for title properties and 'savefig_kwargs' for savefig properties, 'formatter' for the x-axis formatter (Default is Log), and 'xscale' and 'yscale' for the plot scale (Default is 'log').
 
     Returns:
     - bytes: A bytes object containing the plot image in PNG format.
@@ -57,8 +57,8 @@ def plot_standard_curve(
     if ulod_kwargs is None:
         ulod_kwargs = {"color": "blue", "linestyle": "--", "label": "ULOD"}
 
-    plt.xscale("log")
-    plt.yscale("log")
+    plt.xscale(plot_kwargs.get("xscale", "log"))
+    plt.yscale(plot_kwargs.get("yscale", "log"))
     data = pd.DataFrame({"x": x_data, "y": y_data})
     filtered_data = data[data["x"] > 0]
 
