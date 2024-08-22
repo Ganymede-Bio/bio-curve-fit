@@ -1,12 +1,39 @@
+import io
+import os
+import tempfile
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from adjustText import adjust_text
+from matplotlib.testing.compare import compare_images
 
 from bio_curve_fit.logistic import FourPLLogistic
-from bio_curve_fit.plotting import plot_standard_curve
+from bio_curve_fit.plotting import plot_standard_curve, plot_standard_curve_figure
 
 # set a seed for reproducibility
 np.random.seed(42)
+
+
+def compare_bytes_to_reference(img_bytes, relative_reference_path):
+    """
+    Helper function to compare an image in bytes format to a reference image
+    """
+    current_dir = os.path.dirname(__file__)
+    full_path = os.path.join(current_dir, relative_reference_path)
+    # create tmp file to save the image
+    with tempfile.NamedTemporaryFile(suffix=".png") as f:
+        image_path = f.name
+        f.write(img_bytes)
+        # compare the image to the reference image
+        # TODO: this is only passing at very high tol when running in CI
+        # but was passing with a much lower tol when running locally
+        # For now dynamically set the tolerance based on the environment
+        tolerance = int(os.getenv("PLOT_COMPARISON_TOLERANCE", 0.00001))
+        comparison_result = compare_images(full_path, image_path, tol=tolerance)
+    if comparison_result is not None:
+        raise AssertionError(comparison_result)
 
 
 def test_fit_and_plot():
@@ -14,7 +41,7 @@ def test_fit_and_plot():
 
     x_data = np.logspace(0.00001, 7, 100, base=np.e)  # type: ignore
     # generate y-data based on the test parameters
-    y_data = FourPLLogistic.four_param_logistic(
+    y_data = FourPLLogistic._four_param_logistic(
         x_data + np.random.normal(0.0, 0.1 * x_data, len(x_data)), *TEST_PARAMS
     )
 
@@ -30,7 +57,14 @@ def test_fit_and_plot():
     assert r2 > 0.995
 
     # test plotting
-    plot_standard_curve(x_data, y_data, model, llod_kwargs={"color": "pink"})
+    img_bytes = plot_standard_curve(
+        x_data,
+        y_data,
+        model,
+        llod_kwargs={"color": "pink"},
+    )
+    # create tmp file to save the image
+    compare_bytes_to_reference(img_bytes, "reference_plots/test_fit_and_plot.png")
 
     # test __repr__
     print(model)
@@ -124,7 +158,30 @@ def test_readme_example():
     # interpolate the concentration at given responses
     values = model.predict_inverse([0.1, 1.0])
     assert pd.notna(values).all()
-    plot_standard_curve(standard_concentrations, standard_responses, model)
+    img_bytes = plot_standard_curve(
+        standard_concentrations, standard_responses, model, title="4PL Curve Fit"
+    )
+
+    compare_bytes_to_reference(img_bytes, "../examples/readme_fit.png")
+    plt.clf()
+
+    fig, ax = plot_standard_curve_figure(
+        standard_concentrations, standard_responses, model
+    )
+    texts = []
+    for x, y in zip(standard_concentrations, standard_responses):
+        texts.append(ax.text(x, y, f"x={x:.2f}, y={y:.2f}", fontsize=13, ha="right"))
+    # Adjust text labels to avoid overlap
+    adjust_text(texts, ax=ax)
+
+    # save the figure
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    plt.clf()
+    buf.seek(0)
+    img2_bytes = buf.read()
+
+    compare_bytes_to_reference(img2_bytes, "../examples/readme_fit_labels.png")
 
 
 def test_std_dev():

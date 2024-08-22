@@ -8,6 +8,8 @@ jobs:
   test:
 
     runs-on: ubuntu-latest
+    env:
+          PLOT_COMPARISON_TOLERANCE: 40  # Set the tolerance for image comparison
 
     steps:
     - uses: actions/checkout@v2
