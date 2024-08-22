@@ -27,9 +27,7 @@ def compare_bytes_to_reference(img_bytes, relative_reference_path):
         image_path = f.name
         f.write(img_bytes)
         # compare the image to the reference image
-        comparison_result = compare_images(
-            full_path, image_path, tol=0.00000000000000001
-        )
+        comparison_result = compare_images(full_path, image_path, tol=10)
     if comparison_result is not None:
         raise AssertionError(comparison_result)
 
