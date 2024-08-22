@@ -21,4 +21,5 @@ repos:
       name: isort
       entry: isort
       language: system
+      args: ["--profile", "black"]
       types: [python]
