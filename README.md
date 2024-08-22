@@ -54,9 +54,26 @@ plot_standard_curve(standard_concentrations, standard_responses, model, show_plo
 
 ![standard curve](./examples/readme_fit.png)
 
+You can also customize the plot arbitrarily using matplotlib. For example, adding labels to the points:
+
+```python
+from adjustText import adjust_text
+
+fig, ax = plot_standard_curve_figure(standard_concentrations, standard_responses, model)
+texts = []
+for x, y in zip(standard_concentrations, standard_responses):
+	texts.append(ax.text(x, y, f"x={x:.2f}, y={y:.2f})", fontsize=13, ha="right"))
+# Adjust text labels to avoid overlap
+adjust_text(texts, ax=ax)
+```
+
+![standard curve with labels](./examples/readme_fit_labels.png)
+
+
+
 ## Examples
 
-See the [example notebook](./examples/four_pl_logistic/four_pl_fit.ipynb) for more detailed usage.
+See the [example notebooks](./examples/) for more detailed usage.
 
 ## Contributing
 
