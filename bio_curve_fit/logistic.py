@@ -1,14 +1,14 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
-from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.base import RegressorMixin
 
 from .base import BaseStandardCurve
 
 
-class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
+class FourPLLogistic(RegressorMixin, BaseStandardCurve):
     def __init__(
         self,
         A=None,
@@ -45,14 +45,32 @@ class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
         self.slope_direction_positive = slope_direction_positive
         self.slope_guess_num_points_to_use = slope_guess_num_points_to_use
 
-    def check_fit(self):
+    def _check_fit(self):
         if self.A_ is None or self.B_ is None or self.C_ is None or self.D_ is None:
             raise Exception(
                 "Model is not fit yet. Please call 'fit' with appropriate data"
                 " or initialize the model object with non-null parameters."
             )
 
+    def semi_log_linear_range_of_response(self) -> Tuple[float, float]:
+        """
+        Returns the response range where the curve is approximately linear in a semi-log plot.
+
+        That is, it returns the lower and upper limit y-values where the curve will "look" linear
+        when plotted on a log scaled x-axis (usually concentration) and a linear y-axis (usually response).
+
+        Follows Sebaugh, Jeanne & McCray, P.. (2003). Defining the linear portion of a sigmoid-shaped curve: Bend points. Pharmaceutical Statistics - PHARM STAT. 2. 167-174. 10.1002/pst.62. See the pdf in the references folder in this repo, or https://www.researchgate.net/publication/246918700_Defining_the_linear_portion_of_a_sigmoid-shaped_curve_Bend_points
+
+
+        """
+        K = 4.680498579
+        A, B, C, D = self.get_params().values()
+        y_bend_lower = (A - D) / (1 + 1 / K) + D  # type: ignore
+        y_bend_upper = (A - D) / (1 + K) + D  # type: ignore
+        return y_bend_lower, y_bend_upper
+
     def get_params(self, deep=False):
+        self._check_fit()
         if deep:
             return {
                 "A": self.A_,
@@ -73,7 +91,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
             }
 
     @staticmethod
-    def four_param_logistic(x, A, B, C, D):
+    def _four_param_logistic(x, A, B, C, D):
         """4 Parameter Logistic (4PL) model."""
 
         # For addressing fractional powers of negative numbers
@@ -133,6 +151,48 @@ class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
         ulod_x = self.predict_inverse(ulod)
         return llod_x, ulod_x, llod, ulod
 
+    @staticmethod
+    def _tangent_line_at_midpoint(x, A, B, C, D):
+        """
+        Line with slope = (Derivative of the 4PL curve evaluated at C)
+        and passing through the point C
+        """
+        return -(A - D) * B / (4 * C) * (x - C) + (A + D) / 2
+
+    def tangent_line_at_midpoint(self, x):
+        """
+        Returns the equation of the tangent line at the inflection point (C) of the 4PL curve.
+
+        This is used to define the linear range of the curve, that is, the part of the curve
+        where it is approximately linear.
+        """
+        self._check_fit()
+        return self._tangent_line_at_midpoint(x, self.A_, self.B_, self.C_, self.D_)
+
+    @staticmethod
+    def _tangent_line_at_arbitrary_point(x, g, A, B, C, D):
+        """
+        Function of line with slope = (Derivative of the 4PL curve evaluated at g)
+        and passing through the point (g, f(g))
+        """
+        derivative_at_g = (
+            -1 * (A - D) * B * (g / C) ** (B - 1) / (C * (1 + (g / C) ** B) ** 2)
+        )
+        print(derivative_at_g)
+        line_with_slope_at_g = derivative_at_g * (
+            x - g
+        ) + FourPLLogistic._four_param_logistic(g, A, B, C, D)
+        return line_with_slope_at_g
+
+    def tangent_line_at_arbitrary_point(self, x, g):
+        """
+        Returns the f(x) where f is the line tangent to the 4PL curve at the point g
+        """
+        self._check_fit()
+        return FourPLLogistic._tangent_line_at_arbitrary_point(
+            x, g, self.A_, self.B_, self.C_, self.D_
+        )
+
     def fit(self, x_data, y_data, weight_func=None, LOD_func=None, **kwargs):
         """
         Fit the 4 Parameter Logistic (4PL) model.
@@ -185,7 +245,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
         initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_]
 
         curve_fit_kwargs = {
-            "f": self.four_param_logistic,
+            "f": self._four_param_logistic,
             "xdata": x_data,
             "ydata": y_data,
             "p0": initial_guess,
@@ -262,7 +322,7 @@ class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
         response, which is what this function does.
 
         """
-        self.check_fit()
+        self._check_fit()
         z = ((self.A_ - self.D_) / (y - self.D_)) - 1  # type: ignore
 
         # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
@@ -270,5 +330,5 @@ class FourPLLogistic(BaseEstimator, RegressorMixin, BaseStandardCurve):
         return self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
 
     def predict(self, x_data):
-        self.check_fit()
-        return self.four_param_logistic(x_data, self.A_, self.B_, self.C_, self.D_)
+        self._check_fit()
+        return self._four_param_logistic(x_data, self.A_, self.B_, self.C_, self.D_)

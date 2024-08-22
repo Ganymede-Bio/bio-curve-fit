@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
+from sklearn.base import BaseEstimator
 
-class BaseStandardCurve(ABC):
+
+class BaseStandardCurve(ABC, BaseEstimator):
     """
     Interface for standard curve models.
     """
