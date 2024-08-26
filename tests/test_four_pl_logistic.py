@@ -184,6 +184,20 @@ def test_readme_example():
     compare_bytes_to_reference(img2_bytes, "../examples/readme_fit_labels.png")
 
 
+def test_limits():
+    model = FourPLLogistic(A=2, B=1.3, C=1, D=400)
+    y = [1.5, 4, 401]
+    x = model.predict_inverse(y)
+    assert x[0] == 0  # type: ignore
+    assert x[1] > 0  # type: ignore
+    assert np.isnan(x[2])  # type: ignore
+    x2 = model.predict_inverse(y, enforce_limits=False)
+    # should not enforce limits
+    assert x2[0] < 0  # type: ignore
+    assert x2[1] > 0  # type: ignore
+    assert x2[2] < 0  # type: ignore
+
+
 def test_std_dev():
     model = FourPLLogistic().fit(
         test_x,

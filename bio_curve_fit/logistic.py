@@ -312,7 +312,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
         return np.sqrt(self.predict_confidence_band(x_data) ** 2 * ss / df)
 
-    def predict_inverse(self, y):
+    def predict_inverse(self, y, enforce_limits=True):
         """Inverse 4 Parameter Logistic (4PL) model.
 
         Used for calculating the x-value for a given y-value.
@@ -321,13 +321,32 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         But for samples of unknown concentration, we want to get the concentration as given
         response, which is what this function does.
 
+        args:
+        y: float
+            The response value for which the corresponding x-value will be calculated.
+        enforce_detection_limits: bool
+            If True, return np.nan for y-values above the maximum asymptote (D) of the curve, and 0 for y-values below the minimum asymptote (A) of the curve.
+
         """
         self._check_fit()
+        if isinstance(y, list):
+            y = np.array(y)
+
         z = ((self.A_ - self.D_) / (y - self.D_)) - 1  # type: ignore
 
         # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        return self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
+        x = self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
+        if enforce_limits:
+            if isinstance(x, (np.ndarray, pd.Series)):
+                x[y > self.D_] = np.nan
+                x[y < self.A_] = 0
+            elif isinstance(x, (int, float)):
+                if y > self.D_:
+                    return np.nan
+                if y < self.A_:
+                    return 0
+        return x
 
     def predict(self, x_data):
         self._check_fit()
