@@ -1,4 +1,6 @@
-from typing import Optional, Tuple
+"""Base class for logistic models."""
+
+from typing import Iterable, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -9,6 +11,28 @@ from .base import BaseStandardCurve
 
 
 class FourPLLogistic(RegressorMixin, BaseStandardCurve):
+    r"""
+
+    Four Parameter Logistic (4PL) model.
+
+    The 4PL model is a sigmoidal curve that is defined by the following equation:
+
+    .. math::
+        f(x) = \\frac{A - D}{1 + (\\frac{x}{C})^B} + D
+
+    Where:
+        - A is the minimum asymptote
+        - B is the Hill's slope
+        - C is the inflection point (EC50)
+        - D is the maximum asymptote
+
+    The 4PL model is commonly used in bioassays, such as ELISA, where the response signal is
+    proportional to the concentration of the analyte being measured. The 4PL model is used to
+    fit a standard curve, which is a plot of the response signal against the concentration of
+    known standards. The standard curve is then used to estimate the concentration of unknown
+    samples based on their response signal.
+    """
+
     def __init__(
         self,
         A=None,
@@ -54,7 +78,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
     def semi_log_linear_range_of_response(self) -> Tuple[float, float]:
         """
-        Returns the response range where the curve is approximately linear in a semi-log plot.
+        Return the response range where the curve is approximately linear in a semi-log plot.
 
         That is, it returns the lower and upper limit y-values where the curve will "look" linear
         when plotted on a log scaled x-axis (usually concentration) and a linear y-axis (usually response).
@@ -70,6 +94,19 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         return y_bend_lower, y_bend_upper
 
     def get_params(self, deep=False):
+        """
+        Get the parameters of the 4PL model, optionally including the estimated LODs.
+
+        Parameters
+        ----------
+        deep: bool, optional 
+            If True, return the LODs as well. Defaults to False.
+
+        Returns
+        -------
+        dict:
+            Dictionary containing the parameters of the 4PL model. If `deep` is True, the dictionary will also contain the estimated LODs.
+        """
         self._check_fit()
         if deep:
             return {
@@ -93,7 +130,6 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
     @staticmethod
     def _four_param_logistic(x, A, B, C, D):
         """4 Parameter Logistic (4PL) model."""
-
         # For addressing fractional powers of negative numbers
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
         z = np.sign(x / C) * np.abs(x / C) ** B
@@ -103,7 +139,11 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
     @staticmethod
     def inverse_variance_weight_function(y_data):
         """
-        Function for weighting residuals by 1/y^2 in `scipy.optimize.curve_fit`.
+        Weight function for weighting residuals by 1/y^2 in `scipy.optimize.curve_fit`.
+
+        Parameters
+        ----------
+            y_data: y data points
         """
         # To avoid division by zero, add a small constant to y_data.
         return y_data + np.finfo(float).eps
@@ -115,11 +155,11 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         lower_std_dev_multiplier: float = 2.5,
         upper_std_dev_multiplier: float = 0.0,
     ):
-        """
-        Calculate the Lower and Upper Limits of Detection (LLOD and ULOD) using variance
-        of replicate max and min concentration standards. It ignore zero concentration
-        standards. If there are no replicates, the standard deviation zero
-        Possible TODO: sometimes a minimum variance is used in other software.
+        """Calculate the Lower and Upper Limits of Detection (LLOD and ULOD).
+
+        Uses variance of replicate max and min concentration standards. It ignores
+        zero concentration standards. If there are no replicates, the standard
+        deviation zero. Possible TODO: sometimes a minimum variance is used in other software.
 
         In the notation below we assume the response signal is the Y-axis and the
         concentration is the X-axis.
@@ -128,12 +168,18 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         have standard deviation of 100 across their responses. LLOD will be `model.predict
         (1.0) + 100 * 2.5` where 2.5 is the `lower_std_dev_multiplier` parameter.
 
-        :param bottom_std_dev: Standard deviation at the bottom calibration point.
-        :param top_std_dev: Standard deviation at the top calibration point.
-        :param std_dev_multiplier: Multiplier for the standard deviations (default 2.5).
-        :return: Pair of tuples containing the LLOD and ULOD, and the corresponding x-values.
-        """
+        Parameters
+        ----------
+        x_data: x data points
+        y_data: y data points
+        lower_std_dev_multiplier: Multiplier how many standard deviations to add to the lowest calibration point to get the LLOD.
+        upper_std_dev_multiplier: Multiplier how many standard deviations to subtract from the highest calibration point to get the ULOD.
 
+        Returns
+        -------
+        tuple[float, float, float, float]:
+            the LLOD and ULOD, and the corresponding x-values.
+        """
         x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
         # remove zeros from x_data
         x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]
@@ -153,28 +199,20 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
     @staticmethod
     def _tangent_line_at_midpoint(x, A, B, C, D):
-        """
-        Line with slope = (Derivative of the 4PL curve evaluated at C)
-        and passing through the point C
-        """
+        """Line with slope = (Derivative of the 4PL curve evaluated at C) and passing through the point C."""
         return -(A - D) * B / (4 * C) * (x - C) + (A + D) / 2
 
     def tangent_line_at_midpoint(self, x):
-        """
-        Returns the equation of the tangent line at the inflection point (C) of the 4PL curve.
+        """Return y value of the tangent line at the inflection point (C) of the 4PL curve.
 
-        This is used to define the linear range of the curve, that is, the part of the curve
-        where it is approximately linear.
+        This is an alternate way to define the linear range of the curve, that is, the part of the curve where it is approximately linear.
         """
         self._check_fit()
         return self._tangent_line_at_midpoint(x, self.A_, self.B_, self.C_, self.D_)
 
     @staticmethod
     def _tangent_line_at_arbitrary_point(x, g, A, B, C, D):
-        """
-        Function of line with slope = (Derivative of the 4PL curve evaluated at g)
-        and passing through the point (g, f(g))
-        """
+        """Return y value of line with slope = (Derivative of the 4PL curve evaluated at g) and passing through the point (g, f(g))."""
         derivative_at_g = (
             -1 * (A - D) * B * (g / C) ** (B - 1) / (C * (1 + (g / C) ** B) ** 2)
         )
@@ -185,9 +223,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         return line_with_slope_at_g
 
     def tangent_line_at_arbitrary_point(self, x, g):
-        """
-        Returns the f(x) where f is the line tangent to the 4PL curve at the point g
-        """
+        """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
         self._check_fit()
         return FourPLLogistic._tangent_line_at_arbitrary_point(
             x, g, self.A_, self.B_, self.C_, self.D_
@@ -267,9 +303,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
     @staticmethod
     def jacobian(x_data, A, B, C, D):
-        """
-        Jacobian matrix of the 4PL function with respect to A, B, C, D.
-        """
+        """Jacobian matrix of the 4PL function with respect to A, B, C, D."""
         z = (x_data / C) ** B
 
         partial_A = 1.0 / (1.0 + z)
@@ -303,8 +337,8 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         return np.sqrt(pred_var)
 
     def predict_prediction_band(self, x_data, y_data):
-        """
-        Predict prediction bands of data points.
+        """Predict prediction bands of data points.
+
         TODO: still need to double-check the math here.
         """
         ss = (y_data - self.predict(x_data)) ** 2
@@ -312,7 +346,9 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
         return np.sqrt(self.predict_confidence_band(x_data) ** 2 * ss / df)
 
-    def predict_inverse(self, y):
+    def predict_inverse(
+        self, y: Union[float, int, np.ndarray, Iterable[float]], enforce_limits=True
+    ):
         """Inverse 4 Parameter Logistic (4PL) model.
 
         Used for calculating the x-value for a given y-value.
@@ -321,14 +357,44 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         But for samples of unknown concentration, we want to get the concentration as given
         response, which is what this function does.
 
+        Parameters
+        ----------
+        y: float or iterable
+            The response value for which the corresponding x-value will be calculated.
+        enforce_limits: bool
+            If True, return np.nan for y-values above the maximum asymptote (D) of the curve, and 0 for y-values below the minimum asymptote (A) of the curve.
+
         """
         self._check_fit()
+        if isinstance(y, list):
+            y = np.array(y, dtype=float)
+
         z = ((self.A_ - self.D_) / (y - self.D_)) - 1  # type: ignore
 
         # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        return self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
+        x = self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
+        if enforce_limits:
+            if isinstance(y, (np.ndarray, pd.Series)):
+                x[y > self.D_] = np.nan  # type: ignore
+                x[y < self.A_] = 0  # type: ignore
+            elif isinstance(y, (int, float)):
+                if y > self.D_:  # type: ignore
+                    return np.nan
+                elif y < self.A_:  # type: ignore
+                    return 0
+        return x
 
     def predict(self, x_data):
+        """Predict y-values using the 4PL model.
+
+        Parameters
+        ----------
+            x_data (iterable): x data points
+
+        Returns
+        -------
+            iterable: y data points
+        """
         self._check_fit()
         return self._four_param_logistic(x_data, self.A_, self.B_, self.C_, self.D_)
