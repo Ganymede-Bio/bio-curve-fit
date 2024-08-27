@@ -97,8 +97,10 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         """
         Get the parameters of the 4PL model, optionally including the estimated LODs.
 
-        Args:
-            deep (bool, optional): If True, return the LODs as well. Defaults to False.
+        Parameters
+        ----------
+        deep: bool, optional 
+            If True, return the LODs as well. Defaults to False.
 
         Returns
         -------
