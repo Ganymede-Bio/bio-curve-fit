@@ -324,7 +324,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         args:
         y: float
             The response value for which the corresponding x-value will be calculated.
-        enforce_detection_limits: bool
+        enforce_limits: bool
             If True, return np.nan for y-values above the maximum asymptote (D) of the curve, and 0 for y-values below the minimum asymptote (A) of the curve.
 
         """
