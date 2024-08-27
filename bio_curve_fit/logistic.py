@@ -1,6 +1,6 @@
 """Base class for logistic models."""
 
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -344,7 +344,9 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
         return np.sqrt(self.predict_confidence_band(x_data) ** 2 * ss / df)
 
-    def predict_inverse(self, y, enforce_limits=True):
+    def predict_inverse(
+        self, y: Union[float, int, np.ndarray, Iterable[float]], enforce_limits=True
+    ):
         """Inverse 4 Parameter Logistic (4PL) model.
 
         Used for calculating the x-value for a given y-value.
@@ -353,16 +355,17 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         But for samples of unknown concentration, we want to get the concentration as given
         response, which is what this function does.
 
-        args:
-            y: float
-                The response value for which the corresponding x-value will be calculated.
-            enforce_limits: bool
-                If True, return np.nan for y-values above the maximum asymptote (D) of the curve, and 0 for y-values below the minimum asymptote (A) of the curve.
+        Parameters
+        ----------
+        y: float or iterable
+            The response value for which the corresponding x-value will be calculated.
+        enforce_limits: bool
+            If True, return np.nan for y-values above the maximum asymptote (D) of the curve, and 0 for y-values below the minimum asymptote (A) of the curve.
 
         """
         self._check_fit()
         if isinstance(y, list):
-            y = np.array(y)
+            y = np.array(y, dtype=float)
 
         z = ((self.A_ - self.D_) / (y - self.D_)) - 1  # type: ignore
 
@@ -370,13 +373,13 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
         x = self.C_ * (np.sign(z) * np.abs(z) ** (1 / self.B_))  # type: ignore
         if enforce_limits:
-            if isinstance(x, (np.ndarray, pd.Series)):
-                x[y > self.D_] = np.nan
-                x[y < self.A_] = 0
-            elif isinstance(x, (int, float)):
-                if y > self.D_:
+            if isinstance(y, (np.ndarray, pd.Series)):
+                x[y > self.D_] = np.nan  # type: ignore
+                x[y < self.A_] = 0  # type: ignore
+            elif isinstance(y, (int, float)):
+                if y > self.D_:  # type: ignore
                     return np.nan
-                elif y < self.A_:
+                elif y < self.A_:  # type: ignore
                     return 0
         return x
 

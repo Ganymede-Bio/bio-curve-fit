@@ -157,7 +157,7 @@ def test_readme_example():
 
     # interpolate the concentration at given responses
     values = model.predict_inverse([0.1, 1.0])
-    assert pd.notna(values).all()
+    assert pd.notna(values).all()  # type: ignore
     img_bytes = plot_standard_curve(
         standard_concentrations, standard_responses, model, title="4PL Curve Fit"
     )
