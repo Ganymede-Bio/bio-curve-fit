@@ -376,7 +376,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
             elif isinstance(x, (int, float)):
                 if y > self.D_:
                     return np.nan
-                if y < self.A_:
+                elif y < self.A_:
                     return 0
         return x
 
