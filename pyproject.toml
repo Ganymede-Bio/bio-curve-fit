@@ -29,3 +29,14 @@ coverage = "^7.3.2"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+
+[tool.ruff]
+select = ["D", "N"]
+ignore = ["N803", "N806"]
+# You can specify particular rules or conventions as needed
+per-file-ignores = { "tests/*"=["D"] }
+
+# Numpydoc specific configuration
+[tool.ruff.pydocstyle]
+convention = "numpy"
