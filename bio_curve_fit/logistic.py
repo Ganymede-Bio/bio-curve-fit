@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
 from sklearn.base import RegressorMixin
-
+from scipy.stats import skew
 from .base import BaseStandardCurve
 
 
@@ -404,21 +404,23 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
 
     Five Parameter Logistic (5PL) model.
 
-    The 4PL model is a sigmoidal curve that is defined by the following equation:
+    The 5PL model is a sigmoidal curve that is defined by the following equation:
 
     .. math::
-        f(x) = \\frac{A - D}{1 + (\\frac{x}{C})^B} + D
+        f(x) = D + \frac{A - D}{\left(1 + \left(\frac{x}{C}\right)^B\right)^S}
 
     Where:
         - A is the minimum asymptote
         - B is the Hill's slope
         - C is the inflection point (EC50)
         - D is the maximum asymptote
+        - S is the asymmetry factor
 
-    The 4PL model is commonly used in bioassays, such as ELISA, where the response signal is
-    proportional to the concentration of the analyte being measured. The 4PL model is used to
+    The 5PL model is commonly used in bioassays, such as ELISA, where the response signal is
+    proportional to the concentration of the analyte being measured. The 5PL model is used to
     fit a standard curve, which is a plot of the response signal against the concentration of
-    known standards. The standard curve is then used to estimate the concentration of unknown
+    known standards. The 5PL accounts for asymmetry in response and can provide better performance
+    for skewed data. The standard curve is then used to estimate the concentration of unknown
     samples based on their response signal.
     """
 
@@ -615,10 +617,9 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         """Return y value of line with slope = (Derivative of the 5PL curve evaluated at g) and passing through the point (g, f(g))."""
 
         derivative_at_g = (
-                (-1 * (A-D) * S * B * (g/C) ** (B-1) )/ (C*(1+(g/c)**b)**(S+1))
+                (-1 * (A-D) * S * B * (g/C) ** (B-1) )/ (C*(1+(g/C)**B)**(S+1))
         )
 
-        print(derivative_at_g)
         line_with_slope_at_g = derivative_at_g * (
             x - g
         ) + FivePLLogistic._five_param_logistic(g, A, B, C, D, S)
@@ -626,7 +627,7 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         return line_with_slope_at_g
 
     def tangent_line_at_arbitrary_point(self, x, g):
-        """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
+        """Return the f(x) where f is the line tangent to the 5PL curve at the point g."""
         self._check_fit()
         return FivePLLogistic._tangent_line_at_arbitrary_point(
             x, g, self.A_, self.B_, self.C_, self.D_, self.S_
@@ -634,7 +635,7 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
 
     def fit(self, x_data, y_data, weight_func=None, LOD_func=None, **kwargs):
         """
-        Fit the 4 Parameter Logistic (4PL) model.
+        Fit the 5 Parameter Logistic (5PL) model.
 
         x_data: x data points
         y_data: y data points
@@ -682,6 +683,7 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         self.guess_C_ = np.mean(x_data)  # type: ignore
         self.guess_D_ = np.max(y_data)  # type: ignore
         self.guess_S_ = 1
+
         initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_, self.guess_S_]
 
         curve_fit_kwargs = {
@@ -712,11 +714,11 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
 
         partial_A = 1.0 / (1.0 + z)**S
 
-        partial_B_num = -(A-D)*S*Z*np.log(np.maximum(x_data / C, np.finfo(float).eps))
+        partial_B_num = -(A-D)*S*z*np.log(np.maximum(x_data / C, np.finfo(float).eps))
         partial_B_denom = (1 + z)**(S+1)
         partial_B = partial_B_num/partial_B_denom
 
-        partial_C_num = -(A-D) * S * B * Z
+        partial_C_num = -(A-D) * S * B * z
         partial_C_denom = C * (1 + z)**(S+1)
         partial_C = partial_C_num/partial_C_denom
 
