@@ -700,6 +700,11 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
             self.guess_S_,
         ]
 
+        param_bounds = [
+            [-np.inf, -np.inf, -np.inf, -np.inf, 0],
+            [np.inf, np.inf, np.inf, np.inf, 10],
+        ]
+
         curve_fit_kwargs = {
             "f": self._five_param_logistic,
             "xdata": x_data,
@@ -708,6 +713,7 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
             "maxfev": 10000,
             "sigma": weights,
             "absolute_sigma": absolute_sigma,
+            "bounds": param_bounds,
         }
 
         # overwrite parameters with any kwargs passed in
@@ -801,13 +807,13 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         if isinstance(y, list):
             y = np.array(y, dtype=float)
 
-        z = ((self.A_ - self.D_) / (y - self.D_)) - 1  # type: ignore
+        z = (self.A_ - self.D_) / (y - self.D_)  # type: ignore
 
-        term1 = (np.sign(z) * np.abs(z)) ** 1 / self.S_ - 1
+        term1 = (np.sign(z) * np.abs(z)) ** (1 / self.S_) - 1
 
         # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        x = self.C_ * term1**1 / self.B_  # type: ignore
+        x = self.C_ * term1 ** (1 / self.B_)  # type: ignore
 
         if enforce_limits:
             if isinstance(y, (np.ndarray, pd.Series)):
