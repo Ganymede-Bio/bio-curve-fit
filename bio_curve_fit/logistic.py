@@ -5,8 +5,9 @@ from typing import Iterable, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
-from sklearn.base import RegressorMixin
 from scipy.stats import skew
+from sklearn.base import RegressorMixin
+
 from .base import BaseStandardCurve
 
 
@@ -99,7 +100,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
         Parameters
         ----------
-        deep: bool, optional 
+        deep: bool, optional
             If True, return the LODs as well. Defaults to False.
 
         Returns
@@ -182,9 +183,9 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         """
         x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
         # remove zeros from x_data
-        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]
-        x_min = np.min(x_indexed_y_data.index)
-        x_max = np.max(x_indexed_y_data.index)
+        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]  # type: ignore
+        x_min = np.min(x_indexed_y_data.index)  # type: ignore
+        x_max = np.max(x_indexed_y_data.index)  # type: ignore
         bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()
         top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()
 
@@ -399,6 +400,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         self._check_fit()
         return self._four_param_logistic(x_data, self.A_, self.B_, self.C_, self.D_)
 
+
 class FivePLLogistic(RegressorMixin, BaseStandardCurve):
     r"""
 
@@ -465,7 +467,13 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         self.slope_guess_num_points_to_use = slope_guess_num_points_to_use
 
     def _check_fit(self):
-        if self.A_ is None or self.B_ is None or self.C_ is None or self.D_ is None or self.S_ is None:
+        if (
+            self.A_ is None
+            or self.B_ is None
+            or self.C_ is None
+            or self.D_ is None
+            or self.S_ is None
+        ):
             raise Exception(
                 "Model is not fit yet. Please call 'fit' with appropriate data"
                 " or initialize the model object with non-null parameters."
@@ -530,7 +538,7 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         # For addressing fractional powers of negative numbers
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
         z = (np.sign(x / C) * np.abs(x / C)) ** B
-        denominator = (1.0 + z)**S
+        denominator = (1.0 + z) ** S
 
         return ((A - D) / denominator) + D
 
@@ -580,9 +588,9 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         """
         x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
         # remove zeros from x_data
-        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]
-        x_min = np.min(x_indexed_y_data.index)
-        x_max = np.max(x_indexed_y_data.index)
+        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]  # type: ignore
+        x_min = np.min(x_indexed_y_data.index)  # type: ignore
+        x_max = np.max(x_indexed_y_data.index)  # type: ignore
         bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()
         top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()
 
@@ -598,10 +606,9 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
     @staticmethod
     def _tangent_line_at_midpoint(x, A, B, C, D, S):
         """Line with slope = (Derivative of the 5PL curve evaluated at C) and passing through the point C."""
-
-        term1 = D + (A-D)/2**S
-        term2 = (A-D) * S * B / (2**(S+1)*C)
-        term3 = x-C
+        term1 = D + (A - D) / 2**S
+        term2 = (A - D) * S * B / (2 ** (S + 1) * C)
+        term3 = x - C
         return term1 - term2 * term3
 
     def tangent_line_at_midpoint(self, x):
@@ -610,14 +617,15 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         This is an alternate way to define the linear range of the curve, that is, the part of the curve where it is approximately linear.
         """
         self._check_fit()
-        return self._tangent_line_at_midpoint(x, self.A_, self.B_, self.C_, self.D_, self.S_)
+        return self._tangent_line_at_midpoint(
+            x, self.A_, self.B_, self.C_, self.D_, self.S_
+        )
 
     @staticmethod
     def _tangent_line_at_arbitrary_point(x, g, A, B, C, D, S):
         """Return y value of line with slope = (Derivative of the 5PL curve evaluated at g) and passing through the point (g, f(g))."""
-
-        derivative_at_g = (
-                (-1 * (A-D) * S * B * (g/C) ** (B-1) )/ (C*(1+(g/C)**B)**(S+1))
+        derivative_at_g = (-1 * (A - D) * S * B * (g / C) ** (B - 1)) / (
+            C * (1 + (g / C) ** B) ** (S + 1)
         )
 
         line_with_slope_at_g = derivative_at_g * (
@@ -684,7 +692,13 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         self.guess_D_ = np.max(y_data)  # type: ignore
         self.guess_S_ = 1
 
-        initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_, self.guess_S_]
+        initial_guess = [
+            self.guess_A_,
+            self.guess_B_,
+            self.guess_C_,
+            self.guess_D_,
+            self.guess_S_,
+        ]
 
         curve_fit_kwargs = {
             "f": self._five_param_logistic,
@@ -712,22 +726,24 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         """Jacobian matrix of the 5PL function with respect to A, B, C, D, S."""
         z = (x_data / C) ** B
 
-        partial_A = 1.0 / (1.0 + z)**S
+        partial_A = 1.0 / (1.0 + z) ** S
 
-        partial_B_num = -(A-D)*S*z*np.log(np.maximum(x_data / C, np.finfo(float).eps))
-        partial_B_denom = (1 + z)**(S+1)
-        partial_B = partial_B_num/partial_B_denom
+        partial_B_num = (
+            -(A - D) * S * z * np.log(np.maximum(x_data / C, np.finfo(float).eps))
+        )
+        partial_B_denom = (1 + z) ** (S + 1)
+        partial_B = partial_B_num / partial_B_denom
 
-        partial_C_num = -(A-D) * S * B * z
-        partial_C_denom = C * (1 + z)**(S+1)
-        partial_C = partial_C_num/partial_C_denom
+        partial_C_num = -(A - D) * S * B * z
+        partial_C_denom = C * (1 + z) ** (S + 1)
+        partial_C = partial_C_num / partial_C_denom
 
-        partial_D = 1.0 - 1.0 / (1.0 + z)**S
+        partial_D = 1.0 - 1.0 / (1.0 + z) ** S
 
-        partial_S_num = -(A-D) * np.log(1 + z)
-        partial_S_denom = (1 + z)**S
+        partial_S_num = -(A - D) * np.log(1 + z)
+        partial_S_denom = (1 + z) ** S
 
-        partial_S = partial_S_num/partial_S_denom
+        partial_S = partial_S_num / partial_S_denom
 
         # Jacobian matrix
         J = np.array([partial_A, partial_B, partial_C, partial_D, partial_S]).T
@@ -787,11 +803,11 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
 
         z = ((self.A_ - self.D_) / (y - self.D_)) - 1  # type: ignore
 
-        term1 = (np.sign(z) * np.abs(z))**1/self.S_ - 1
+        term1 = (np.sign(z) * np.abs(z)) ** 1 / self.S_ - 1
 
         # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        x = self.C_ * term1 ** 1/self.B_  # type: ignore
+        x = self.C_ * term1**1 / self.B_  # type: ignore
 
         if enforce_limits:
             if isinstance(y, (np.ndarray, pd.Series)):
@@ -816,4 +832,6 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
             iterable: y data points
         """
         self._check_fit()
-        return self._five_param_logistic(x_data, self.A_, self.B_, self.C_, self.D_, self.S_)
+        return self._five_param_logistic(
+            x_data, self.A_, self.B_, self.C_, self.D_, self.S_
+        )

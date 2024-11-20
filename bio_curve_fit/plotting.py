@@ -1,7 +1,6 @@
 import io
 from typing import Tuple
 
-import matplotlib
 import matplotlib.figure
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,7 +27,8 @@ def plot_standard_curve(
     """
     Generate a plot of the data and the fitted curve with customizable plotting parameters.
 
-    Parameters:
+    Parameters
+    ----------
     - x_data (iterable): X-axis data points.
     - y_data (iterable | None): Y-axis data points corresponding to x_data. Can set this to None if you only want to plot the fitted curve for a given range of x-values specified in `x_data`.
     - fitted_model (BaseStandardCurve): A fitted model instance that provides prediction and LLOD/ULOD values.
@@ -42,7 +42,8 @@ def plot_standard_curve(
     - ulod_kwargs (dict, optional): Keyword arguments for the axhline function for the Upper Limit of Detection line. Default is {'color': 'blue', 'linestyle': '--', 'label': 'ULOD'}.
     - plot_kwargs (dict, optional): General keyword arguments for further plot customizations. This can include 'title_kwargs' for title properties and 'savefig_kwargs' for savefig properties, 'formatter' for the x-axis formatter (Default is Log), and 'xscale' and 'yscale' for the plot scale (Default is 'log').
 
-    Returns:
+    Returns
+    -------
     - fig, ax: The matplotlib figure and axes objects.
 
     Example Usage:
@@ -51,7 +52,6 @@ def plot_standard_curve(
 
     This function allows extensive customization of the plot's appearance by adjusting properties of the curve, data points, LLOD line, ULOD line, and overall plot aesthetics through various keyword arguments. For more advanced customization, consider using plot_standard_curve_figure instead, which returns the figure and axes objects for further modification.
     """
-
     fig, ax = plot_standard_curve_figure(
         x_data,
         y_data,
@@ -88,7 +88,8 @@ def plot_standard_curve_figure(
     **plot_kwargs  # kwargs for general plot adjustments
 ) -> Tuple[matplotlib.figure.Figure, plt.Axes]:
     """
-    Same as plot_standard_curve, but returns the figure and axes objects instead of saving the plot to a file
+
+    Plot a standard curve, similar to plot_standard_curve, but returns the figure and axes objects instead of saving the plot to a file
     for easier customization and further modification.
 
     Example Usage:
@@ -105,8 +106,8 @@ def plot_standard_curve_figure(
     # Adjust text labels to avoid overlap
     adjust_text(texts, ax=ax)
     ```
-    """
 
+    """
     # Default keyword argument dictionaries
     if curve_kwargs is None:
         curve_kwargs = {"label": "Fitted curve", "color": "red"}
@@ -119,12 +120,13 @@ def plot_standard_curve_figure(
 
     fig, ax = plt.subplots()
 
-    ax.set_xscale(plot_kwargs.get("xscale", "log"))
-    ax.set_yscale(plot_kwargs.get("yscale", "log"))
+    ax.set_xscale(plot_kwargs.get("xscale", "log"))  # type: ignore
+    ax.set_yscale(plot_kwargs.get("yscale", "log"))  # type: ignore
 
     EPSILON = 0.01
     x_min = np.log10(max(min(x_data), EPSILON))
     x_max = max(x_data) * 2
+
     x = np.logspace(x_min, np.log10(x_max), 100)  # type: ignore
     y_pred = fitted_model.predict(x)
 
@@ -132,10 +134,10 @@ def plot_standard_curve_figure(
     if y_data is not None:
         data = pd.DataFrame({"x": x_data, "y": y_data})
         filtered_data = data[data["x"] > 0]
-        ax.scatter(filtered_data["x"], filtered_data["y"], **data_kwargs)
+        ax.scatter(filtered_data["x"], filtered_data["y"], **data_kwargs)  # type: ignore
 
     formatter = plot_kwargs.get("formatter", LogFormatter())
-    ax.xaxis.set_major_formatter(formatter)
+    ax.xaxis.set_major_formatter(formatter)  # type: ignore
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_title(title, **plot_kwargs.get("title_kwargs", {}))
