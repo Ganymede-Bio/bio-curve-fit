@@ -5,7 +5,6 @@ from typing import Iterable, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
-from scipy.stats import skew
 from sklearn.base import RegressorMixin
 
 from .base import BaseStandardCurve
@@ -72,7 +71,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
     def _check_fit(self):
         if self.A_ is None or self.B_ is None or self.C_ is None or self.D_ is None:
-            raise Exception(
+            raise ValueError(
                 "Model is not fit yet. Please call 'fit' with appropriate data"
                 " or initialize the model object with non-null parameters."
             )
@@ -183,9 +182,9 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         """
         x_indexed_y_data = pd.DataFrame({"x": x_data, "y": y_data}).set_index("x")
         # remove zeros from x_data
-        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index > 0]  # type: ignore
-        x_min = np.min(x_indexed_y_data.index)  # type: ignore
-        x_max = np.max(x_indexed_y_data.index)  # type: ignore
+        x_indexed_y_data = x_indexed_y_data[x_indexed_y_data.index.to_numpy() > 0]
+        x_min = np.min(x_indexed_y_data.index.to_numpy())
+        x_max = np.max(x_indexed_y_data.index.to_numpy())
         bottom_std_dev = x_indexed_y_data.loc[x_min, "y"].std()
         top_std_dev = x_indexed_y_data.loc[x_max, "y"].std()
 
@@ -266,12 +265,16 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
             self.guess_B_ = (
                 1.0
                 if np.mean(
-                    df_data.iloc[: np.minimum(self.slope_guess_num_points_to_use, len(df_data))][  # type: ignore
+                    df_data.iloc[
+                        : np.minimum(self.slope_guess_num_points_to_use, len(df_data))
+                    ][  # type: ignore
                         "y"
                     ]
                 )
                 < np.mean(
-                    df_data.iloc[-np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :][  # type: ignore
+                    df_data.iloc[
+                        -np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :
+                    ][  # type: ignore
                         "y"
                     ]
                 )
@@ -308,7 +311,9 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
         z = (x_data / C) ** B
 
         partial_A = 1.0 / (1.0 + z)
-        partial_B = -(z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))) / (  # type: ignore
+        partial_B = -(
+            z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))
+        ) / (  # type: ignore
             (1.0 + z) ** 2
         )
         partial_C = (B * z * (A - D)) / (C * (1.0 + z) ** 2)
@@ -329,7 +334,7 @@ class FourPLLogistic(RegressorMixin, BaseStandardCurve):
 
         """
         if self.cov_ is None:
-            raise Exception(
+            raise ValueError(
                 "Covariance matrix is not available. Please call 'fit' with appropriate data."
             )
         J = self.jacobian(x_data, self.A_, self.B_, self.C_, self.D_)
@@ -419,10 +424,10 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         - S is the asymmetry factor
 
     The 5PL model is commonly used in bioassays, such as ELISA, where the response signal is
-    proportional to the concentration of the analyte being measured. The 5PL model is used to
+    proportional to the concentration of the analyte being measured. It's used to
     fit a standard curve, which is a plot of the response signal against the concentration of
     known standards. The 5PL accounts for asymmetry in response and can provide better performance
-    for skewed data. The standard curve is then used to estimate the concentration of unknown
+    for skewed data when compared to the 4PL. The standard curve is then used to estimate the concentration of unknown
     samples based on their response signal.
     """
 
@@ -474,7 +479,7 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
             or self.D_ is None
             or self.S_ is None
         ):
-            raise Exception(
+            raise ValueError(
                 "Model is not fit yet. Please call 'fit' with appropriate data"
                 " or initialize the model object with non-null parameters."
             )
@@ -677,12 +682,16 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
             self.guess_B_ = (
                 1.0
                 if np.mean(
-                    df_data.iloc[: np.minimum(self.slope_guess_num_points_to_use, len(df_data))][  # type: ignore
+                    df_data.iloc[
+                        : np.minimum(self.slope_guess_num_points_to_use, len(df_data))
+                    ][  # type: ignore
                         "y"
                     ]
                 )
                 < np.mean(
-                    df_data.iloc[-np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :][  # type: ignore
+                    df_data.iloc[
+                        -np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :
+                    ][  # type: ignore
                         "y"
                     ]
                 )
@@ -735,7 +744,15 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
         partial_A = 1.0 / (1.0 + z) ** S
 
         partial_B_num = (
-            -(A - D) * S * z * np.log(np.maximum(x_data / C, np.finfo(float).eps))
+            -(A - D)
+            * S
+            * z
+            * np.log(
+                np.maximum(
+                    np.array(x_data, dtype=float) / C,
+                    np.finfo(float).eps * np.ones_like(x_data),
+                )
+            )
         )
         partial_B_denom = (1 + z) ** (S + 1)
         partial_B = partial_B_num / partial_B_denom
@@ -766,7 +783,7 @@ class FivePLLogistic(RegressorMixin, BaseStandardCurve):
 
         """
         if self.cov_ is None:
-            raise Exception(
+            raise ValueError(
                 "Covariance matrix is not available. Please call 'fit' with appropriate data."
             )
         J = self.jacobian(x_data, self.A_, self.B_, self.C_, self.D_, self.S_)
