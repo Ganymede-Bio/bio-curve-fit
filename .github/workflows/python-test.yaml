@@ -12,19 +12,19 @@ jobs:
           PLOT_COMPARISON_TOLERANCE: 40  # Set the tolerance for image comparison
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.8'  # Choose the Python version
+        python-version: '3.11'  # Choose the Python version
 
     - name: Install Poetry
       run: |
         curl -sSL https://install.python-poetry.org | python3 -
 
     - name: Cache Poetry virtualenv
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pypoetry/virtualenvs
         key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
