@@ -41,7 +41,7 @@ def test_fit_and_plot():
 
     x_data = np.logspace(0.00001, 7, 100, base=np.e)  # type: ignore
     # generate y-data based on the test parameters
-    y_data = FourPLLogistic._four_param_logistic(
+    y_data = FourPLLogistic._logistic_model(
         x_data + np.random.normal(0.0, 0.1 * x_data, len(x_data)), *TEST_PARAMS
     )
 
@@ -185,7 +185,8 @@ def test_readme_example():
 
 
 def test_limits():
-    model = FourPLLogistic(A=2, B=1.3, C=1, D=400)
+    param_dict = {"A": 2, "B": 1.3, "C": 1, "D": 400}
+    model = FourPLLogistic(params=param_dict)
     y = [1.5, 4, 401]
     x = model.predict_inverse(y)
     assert x[0] == 0  # type: ignore

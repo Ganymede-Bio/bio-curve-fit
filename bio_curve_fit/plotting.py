@@ -22,7 +22,7 @@ def plot_standard_curve(
     data_kwargs=None,  # kwargs for the data scatter plot
     llod_kwargs=None,  # kwargs for the LLOD line
     ulod_kwargs=None,  # kwargs for the ULOD line
-    **plot_kwargs  # kwargs for general plot adjustments
+    **plot_kwargs,  # kwargs for general plot adjustments
 ) -> bytes:
     """
     Generate a plot of the data and the fitted curve with customizable plotting parameters.
@@ -63,7 +63,7 @@ def plot_standard_curve(
         data_kwargs=data_kwargs,
         llod_kwargs=llod_kwargs,
         ulod_kwargs=ulod_kwargs,
-        **plot_kwargs
+        **plot_kwargs,
     )
     if show_plot:
         plt.show()
@@ -85,7 +85,7 @@ def plot_standard_curve_figure(
     data_kwargs=None,  # kwargs for the data scatter plot
     llod_kwargs=None,  # kwargs for the LLOD line
     ulod_kwargs=None,  # kwargs for the ULOD line
-    **plot_kwargs  # kwargs for general plot adjustments
+    **plot_kwargs,  # kwargs for general plot adjustments
 ) -> Tuple[matplotlib.figure.Figure, plt.Axes]:
     """
 
