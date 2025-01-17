@@ -15,11 +15,10 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
     """
     Abstract base class for logistic regression model and associated fitting.
 
-
     Attributes
     ----------
     params : dict
-        Path or URL from which the data is sourced.
+        Dictionary of parameters and values for fit model.
     LLOD
     ULOD
     ULOD_y
@@ -30,18 +29,26 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
     Methods
     -------
     check_fit_params():
-        ...
-    inverse_variance_weight_function(data):
-        ...
-    _logistic_model:
-        ...
+        Verifies parameters have been estimated for associated model. Required parameters are
+        defined by subclasses.
+
     get_params:
-        ...
-    predict:
-        ...
+        Retrieves all parameters for fit model.
+
+    inverse_variance_weight_function(data):
+        Weight function for weighting residuals by 1/y^2 in `scipy.optimize.curve_fit`.
+
     _calculate_lod_replicate_variance:
-        ...
+        Calculate upper and lower limit of detection for provided dataset.
+
+    _logistic_model:
+        Functional form for logistic regression model. Implemented by subclasses
+
+    predict:
+        Applies fit model to provided samples. Implemented by subclasses.
+
     generate_initial_param_values
+        Generate initial parameter values for model. Implemented by subclasses.
 
     """
     def __init__(
@@ -84,23 +91,6 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
                 f"Mismatch found between parameter keys {list(self.params.keys())} and required parameters {self.required_params}."
             )
 
-    @staticmethod
-    def inverse_variance_weight_function(y_data):
-        """
-        Weight function for weighting residuals by 1/y^2 in `scipy.optimize.curve_fit`.
-
-        Parameters
-        ----------
-            y_data: y data points
-        """
-        # To avoid division by zero, add a small constant to y_data.
-        return y_data + np.finfo(float).eps
-
-    @staticmethod
-    @abstractmethod
-    def _logistic_model(x, *args):
-        pass
-
     def get_params(self, deep=False):
         """
         Get the parameters of the logistic model, optionally including the estimated LODs.
@@ -127,10 +117,6 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
 
         else:
             return self.params
-
-    @abstractmethod
-    def predict(self, x_data):
-        pass
 
     def _calculate_lod_replicate_variance(
         self,
@@ -180,10 +166,6 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         llod_x = self.predict_inverse(llod)
         ulod_x = self.predict_inverse(ulod)
         return llod_x, ulod_x, llod, ulod
-
-    @abstractmethod
-    def generate_initial_param_values(self, x_data, y_data):
-        pass
 
     def fit(
         self,
@@ -253,8 +235,35 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
 
         return self
 
+    @staticmethod
+    def inverse_variance_weight_function(y_data):
+        """
+        Weight function for weighting residuals by 1/y^2 in `scipy.optimize.curve_fit`.
 
-class FourPLLogistic(LogisticRegression):
+        Parameters
+        ----------
+            y_data: y data points
+        """
+        # To avoid division by zero, add a small constant to y_data.
+        return y_data + np.finfo(float).eps
+
+    @staticmethod
+    @abstractmethod
+    def _logistic_model(x, *args):
+        pass
+
+    @abstractmethod
+    def predict(self, x_data):
+        pass
+
+
+    @abstractmethod
+    def generate_initial_param_values(self, x_data, y_data):
+        pass
+
+
+
+class FourParamLogistic(LogisticRegression):
     def __init__(self, params=None):
         self.required_params = ["A", "B", "C", "D"]
 
@@ -301,14 +310,14 @@ class FourPLLogistic(LogisticRegression):
 
         line_with_slope_at_g = derivative_at_g * (
             x - g
-        ) + FourPLLogistic._logistic_model(g, A, B, C, D)
+        ) + FourParamLogistic._logistic_model(g, A, B, C, D)
         return line_with_slope_at_g
 
     def tangent_line_at_arbitrary_point(self, x, g):
         """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
         self._check_fit_params()
 
-        return FourPLLogistic._tangent_line_at_arbitrary_point(
+        return FourParamLogistic._tangent_line_at_arbitrary_point(
             x, g, self.params["A"], self.params["B"], self.params["C"], self.params["D"]
         )
 
@@ -316,7 +325,7 @@ class FourPLLogistic(LogisticRegression):
         """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
         self._check_fit_params()
 
-        return FourPLLogistic._tangent_line_at_midpoint(
+        return FourParamLogistic._tangent_line_at_midpoint(
             x, self.params["A"], self.params["B"], self.params["C"], self.params["D"]
         )
 
@@ -327,12 +336,12 @@ class FourPLLogistic(LogisticRegression):
         df_data.sort_values(by="x", inplace=True)
 
         # Initial guess for the parameters
-        self.guess_A_ = np.min(y_data)  # type: ignore
+        guess_A = np.min(y_data)  # type: ignore
         if self.slope_direction_positive is not None:
-            self.guess_B_ = 1.0 if self.slope_direction_positive else -1.0
+            guess_B = 1.0 if self.slope_direction_positive else -1.0
         else:
             # type: ignore
-            self.guess_B_ = (
+            guess_B = (
                 1.0
                 if np.mean(
                     df_data.iloc[
@@ -350,9 +359,9 @@ class FourPLLogistic(LogisticRegression):
                 )
                 else -1.0
             )
-        self.guess_C_ = np.mean(x_data)  # type: ignore
-        self.guess_D_ = np.max(y_data)  # type: ignore
-        initial_guess = [self.guess_A_, self.guess_B_, self.guess_C_, self.guess_D_]
+        guess_C = np.mean(x_data)  # type: ignore
+        guess_D = np.max(y_data)  # type: ignore
+        initial_guess = [guess_A, guess_B, guess_C, guess_D]
 
         return initial_guess
 
@@ -471,7 +480,7 @@ class FourPLLogistic(LogisticRegression):
         )
 
 
-class FivePLLogistic(LogisticRegression):
+class FiveParamLogistic(LogisticRegression):
     r"""
 
     Five Parameter Logistic (5PL) model.
@@ -542,14 +551,14 @@ class FivePLLogistic(LogisticRegression):
 
         line_with_slope_at_g = derivative_at_g * (
             x - g
-        ) + FivePLLogistic._logistic_model(g, A, B, C, D, E)
+        ) + FiveParamLogistic._logistic_model(g, A, B, C, D, E)
 
         return line_with_slope_at_g
 
     def tangent_line_at_arbitrary_point(self, x, g):
         """Return the f(x) where f is the line tangent to the 5PL curve at the point g."""
         self._check_fit_params()
-        return FivePLLogistic._tangent_line_at_arbitrary_point(
+        return FiveParamLogistic._tangent_line_at_arbitrary_point(
             x,
             g,
             self.params["A"],

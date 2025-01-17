@@ -9,7 +9,7 @@ import pytest
 from adjustText import adjust_text
 from matplotlib.testing.compare import compare_images
 
-from bio_curve_fit.logistic import FourPLLogistic
+from bio_curve_fit.logistic import FourParamLogistic
 from bio_curve_fit.plotting import plot_standard_curve, plot_standard_curve_figure
 
 # set a seed for reproducibility
@@ -41,12 +41,12 @@ def test_fit_and_plot():
 
     x_data = np.logspace(0.00001, 7, 100, base=np.e)  # type: ignore
     # generate y-data based on the test parameters
-    y_data = FourPLLogistic._logistic_model(
+    y_data = FourParamLogistic._logistic_model(
         x_data + np.random.normal(0.0, 0.1 * x_data, len(x_data)), *TEST_PARAMS
     )
 
-    model = FourPLLogistic().fit(
-        x_data, y_data, weight_func=FourPLLogistic.inverse_variance_weight_function
+    model = FourParamLogistic().fit(
+        x_data, y_data, weight_func=FourParamLogistic.inverse_variance_weight_function
     )
 
     # model should recover parameters used to generate the data
@@ -118,10 +118,10 @@ test_x = pd.Series(
 
 
 def test_fit2():
-    model = FourPLLogistic().fit(
+    model = FourParamLogistic().fit(
         test_x,
         test_y,
-        weight_func=FourPLLogistic.inverse_variance_weight_function,
+        weight_func=FourParamLogistic.inverse_variance_weight_function,
     )
     print("Params:", model.get_params())
     print(model.predict_inverse(0.1))
@@ -139,7 +139,7 @@ def test_readme_example():
     ensure that the example in the README works
     """
     # Instantiate model
-    model = FourPLLogistic()
+    model = FourParamLogistic()
 
     # create some example data
     standard_concentrations = [1, 2, 3, 4, 5]
@@ -186,7 +186,7 @@ def test_readme_example():
 
 def test_limits():
     param_dict = {"A": 2, "B": 1.3, "C": 1, "D": 400}
-    model = FourPLLogistic(params=param_dict)
+    model = FourParamLogistic(params=param_dict)
     y = [1.5, 4, 401]
     x = model.predict_inverse(y)
     assert x[0] == 0  # type: ignore
@@ -200,7 +200,7 @@ def test_limits():
 
 
 def test_std_dev():
-    model = FourPLLogistic().fit(
+    model = FourParamLogistic().fit(
         test_x,
         test_y,
     )

@@ -1,6 +1,6 @@
 
 import numpy as np
-from bio_curve_fit.logistic import FivePLLogistic
+from bio_curve_fit.logistic import FiveParamLogistic, FourParamLogistic
 
 # set a seed for reproducibility
 np.random.seed(42)
@@ -10,12 +10,12 @@ def test_fit():
 
     x_data = np.logspace(0.00001, 7, 100, base=np.e)  # type: ignore
     # generate y-data based on the test parameters
-    y_data = FivePLLogistic._logistic_model(
+    y_data = FiveParamLogistic._logistic_model(
         x_data + np.random.normal(0.0, 0.1 * x_data, len(x_data)), *TEST_PARAMS
     )
 
-    model = FivePLLogistic().fit(
-        x_data, y_data, weight_func=FivePLLogistic.inverse_variance_weight_function
+    model = FiveParamLogistic().fit(
+        x_data, y_data, weight_func=FiveParamLogistic.inverse_variance_weight_function
     )
 
     # model should recover parameters used to generate the data
@@ -76,10 +76,10 @@ instrument_responses = [
 ]
 
 def test_fit2():
-    model = FivePLLogistic().fit(
+    model = FiveParamLogistic().fit(
         known_concentrations,
         instrument_responses,
-        weight_func=FivePLLogistic.inverse_variance_weight_function,
+        weight_func=FiveParamLogistic.inverse_variance_weight_function,
     )
 
     print(model.predict_inverse(0.1))
@@ -90,8 +90,32 @@ def test_fit2():
     assert np.isclose(model.LLOD_y_, 0.00213, rtol=0.1)  # type: ignore
 
 
+def test_compare_4PL_to_5PL():
+
+    four_param_model = FourParamLogistic().fit(
+        known_concentrations,
+        instrument_responses,
+        weight_func=FourParamLogistic.inverse_variance_weight_function,
+    )
+
+    five_param_model = FiveParamLogistic().fit(
+        known_concentrations,
+        instrument_responses,
+        weight_func=FiveParamLogistic.inverse_variance_weight_function,
+    )
+
+
+    four_param_model.fit(known_concentrations, instrument_responses, weight_func=FourParamLogistic.inverse_variance_weight_function)
+    five_param_model.fit(known_concentrations, instrument_responses, weight_func=FourParamLogistic.inverse_variance_weight_function)
+
+    four_param_model.score(known_concentrations, instrument_responses)
+    five_param_model.score(known_concentrations, instrument_responses)
+
+    assert four_param_model.score(known_concentrations, instrument_responses) < five_param_model.score(known_concentrations, instrument_responses)
+
+
 def test_std_dev():
-    model = FivePLLogistic().fit(
+    model = FiveParamLogistic().fit(
         known_concentrations,
         instrument_responses,
     )
