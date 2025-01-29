@@ -1,11 +1,13 @@
+"""Plotting functions for standard curve data and fitted models."""
+
 import io
 from typing import Tuple
 
-import matplotlib.figure
+import matplotlib.figure  # type: ignore
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.ticker import LogFormatter
+from matplotlib.ticker import LogFormatter  # type: ignore
 
 from .base import BaseStandardCurve
 
@@ -88,12 +90,9 @@ def plot_standard_curve_figure(
     **plot_kwargs,  # kwargs for general plot adjustments
 ) -> Tuple[matplotlib.figure.Figure, plt.Axes]:
     """
-
-    Plot a standard curve, similar to plot_standard_curve, but returns the figure and axes objects instead of saving the plot to a file
-    for easier customization and further modification.
+    Plot a standard curve, similar to plot_standard_curve, but returns the figure and axes objects instead of saving the plot to a file for easier customization and further modification.
 
     Example Usage:
-
     ```
     # Add text labels to the data points
     from adjustText import adjust_text
@@ -106,7 +105,6 @@ def plot_standard_curve_figure(
     # Adjust text labels to avoid overlap
     adjust_text(texts, ax=ax)
     ```
-
     """
     # Default keyword argument dictionaries
     if curve_kwargs is None:

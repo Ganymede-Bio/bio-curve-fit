@@ -1,12 +1,13 @@
 import io
 import os
 import tempfile
+from dataclasses import asdict
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
-from adjustText import adjust_text
+from adjustText import adjust_text  # type: ignore
 from matplotlib.testing.compare import compare_images
 
 from bio_curve_fit.logistic import FourParamLogistic
@@ -37,21 +38,28 @@ def compare_bytes_to_reference(img_bytes, relative_reference_path):
 
 
 def test_fit_and_plot():
-    TEST_PARAMS = [1.0, 1.0, 2.0, 3.0]
+    np.random.seed(42)  # reset in test func as it seems to gett reset in CI
+    TEST_PARAMS = {"A": 1, "B": 1, "C": 2, "D": 3}
 
     x_data = np.logspace(0.00001, 7, 100, base=np.e)  # type: ignore
     # generate y-data based on the test parameters
-    y_data = FourParamLogistic._logistic_model(
-        x_data + np.random.normal(0.0, 0.1 * x_data, len(x_data)), *TEST_PARAMS
+    y_data = FourParamLogistic._logistic_model(x_data, **TEST_PARAMS)
+    y_data_with_noise = y_data + np.random.normal(0, 0.01, len(y_data))
+
+    model = FourParamLogistic()
+    with pytest.raises(ValueError):
+        model.predict(x_data)
+
+    model.fit(
+        x_data,
+        y_data_with_noise,
+        weight_func=FourParamLogistic.inverse_variance_weight_function,
     )
 
-    model = FourParamLogistic().fit(
-        x_data, y_data, weight_func=FourParamLogistic.inverse_variance_weight_function
-    )
-
+    fitted_params = model.get_params()
     # model should recover parameters used to generate the data
-    params = list(model.get_params().values())
-    assert np.isclose(params, TEST_PARAMS, rtol=0.4).all()  # type: ignore
+    for key, value in TEST_PARAMS.items():
+        assert np.isclose(fitted_params[key], value, rtol=0.08)  # type: ignore
 
     r2 = model.score(x_data, y_data)
     assert r2 > 0.995
@@ -59,7 +67,7 @@ def test_fit_and_plot():
     # test plotting
     img_bytes = plot_standard_curve(
         x_data,
-        y_data,
+        y_data_with_noise,
         model,
         llod_kwargs={"color": "pink"},
     )
@@ -68,6 +76,7 @@ def test_fit_and_plot():
 
     # test __repr__
     print(model)
+    print(model.get_params())
 
 
 test_y = pd.Series(
@@ -186,7 +195,7 @@ def test_readme_example():
 
 def test_limits():
     param_dict = {"A": 2, "B": 1.3, "C": 1, "D": 400}
-    model = FourParamLogistic(params=param_dict)
+    model = FourParamLogistic(**param_dict)
     y = [1.5, 4, 401]
     x = model.predict_inverse(y)
     assert x[0] == 0  # type: ignore
@@ -200,6 +209,7 @@ def test_limits():
 
 
 def test_std_dev():
+    # TODO: this test is not very useful
     model = FourParamLogistic().fit(
         test_x,
         test_y,

@@ -1,7 +1,9 @@
+"""Interfaces for standard curve models."""
+
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator  # type: ignore
 
 
 class BaseStandardCurve(ABC, BaseEstimator):

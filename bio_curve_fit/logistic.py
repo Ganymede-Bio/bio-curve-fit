@@ -1,12 +1,13 @@
 """Base class for logistic models."""
 
 from abc import ABC, abstractmethod
+from inspect import signature
 from typing import Iterable, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import curve_fit
-from sklearn.base import RegressorMixin
+from scipy.optimize import curve_fit  # type: ignore
+from sklearn.base import RegressorMixin  # type: ignore
 
 from .base import BaseStandardCurve
 
@@ -17,8 +18,6 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
 
     Attributes
     ----------
-    params : dict
-        Dictionary of parameters and values for fit model.
     LLOD
     ULOD
     ULOD_y
@@ -28,13 +27,6 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
 
     Methods
     -------
-    check_fit_params():
-        Verifies parameters have been estimated for associated model. Required parameters are
-        defined by subclasses.
-
-    get_params:
-        Retrieves all parameters for fit model.
-
     inverse_variance_weight_function(data):
         Weight function for weighting residuals by 1/y^2 in `scipy.optimize.curve_fit`.
 
@@ -51,9 +43,9 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         Generate initial parameter values for model. Implemented by subclasses.
 
     """
+
     def __init__(
         self,
-        params=None,
         LLOD=None,
         ULOD=None,
         ULOD_y=None,
@@ -61,7 +53,6 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         slope_direction_positive: Optional[bool] = None,
         slope_guess_num_points_to_use: int = 3,
     ):
-        self.params = params
         self.cov_ = None
         # Estimated Limits of Detection for response signal
         self.LLOD_y_ = LLOD_y
@@ -71,52 +62,6 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         self.ULOD_ = ULOD
         self.slope_direction_positive = slope_direction_positive
         self.slope_guess_num_points_to_use = slope_guess_num_points_to_use
-
-    def _check_fit_params(self):
-        if not self.required_params:
-            return NotImplementedError(
-                "Required parameters not defined in class instance."
-            )
-
-        if not self.params:
-            raise ValueError(
-                "Model is not fit yet. Please call 'fit' with appropriate data"
-                " or initialize the model object with non-null parameters."
-            )
-
-        if not all(
-            key in self.params and self.params[key] for key in self.required_params
-        ):
-            raise ValueError(
-                f"Mismatch found between parameter keys {list(self.params.keys())} and required parameters {self.required_params}."
-            )
-
-    def get_params(self, deep=False):
-        """
-        Get the parameters of the logistic model, optionally including the estimated LODs.
-
-        Parameters
-        ----------
-        deep: bool, optional
-            If True, return the LODs as well. Defaults to False.
-
-        Returns
-        -------
-        dict:
-            Dictionary containing the parameters of the logistic model. If `deep` is True, the dictionary will also contain the estimated LODs.
-        """
-        self._check_fit_params()
-        if deep:
-            optional_dict = {
-                "LLOD": self.LLOD_,
-                "ULOD": self.ULOD_,
-                "ULOD_y": self.ULOD_y_,
-                "LLOD_y": self.LLOD_y_,
-            }
-            return self.params | optional_dict
-
-        else:
-            return self.params
 
     def _calculate_lod_replicate_variance(
         self,
@@ -166,6 +111,14 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         llod_x = self.predict_inverse(llod)
         ulod_x = self.predict_inverse(ulod)
         return llod_x, ulod_x, llod, ulod
+
+    def _check_fit_params(self):
+        for v in self.get_params().values():
+            if v is None:
+                raise ValueError(
+                    "Model is not fit yet. Please call 'fit' with appropriate data"
+                    " or initialize the model object with non-null parameters."
+                )
 
     def fit(
         self,
@@ -220,15 +173,12 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
             curve_fit_kwargs[k] = v
 
         # Perform the curve fit
-        params, cov = curve_fit(**curve_fit_kwargs)
-        param_dict = {}
-        for i in range(len(self.required_params)):
-            print("required param is:", self.required_params[i])
-            print("param predicted was:", params[i])
-            param_dict[self.required_params[i]] = params[i]
-
-        print("param dict is:", param_dict)
-        self.params = param_dict
+        fitted_params, cov = curve_fit(**curve_fit_kwargs)
+        # get the arguments of the logistic model except x (the data)
+        function_args = list(signature(self._logistic_model).parameters.keys())
+        function_args.remove("x")
+        params_dict = {k: v for k, v in zip(function_args, fitted_params)}
+        self.set_params(**params_dict)
 
         self.cov_ = cov
         self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
@@ -254,20 +204,25 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
 
     @abstractmethod
     def predict(self, x_data):
+        """Override this method in subclasses."""
         pass
-
 
     @abstractmethod
     def generate_initial_param_values(self, x_data, y_data):
+        """Override this method in subclasses."""
         pass
 
 
-
 class FourParamLogistic(LogisticRegression):
-    def __init__(self, params=None):
-        self.required_params = ["A", "B", "C", "D"]
+    """Implementation of the 4 Parameter Logistic (4PL) model."""
 
-        super().__init__(params=params)
+    def __init__(self, A=None, B=None, C=None, D=None, **kwargs):
+        self.A = A
+        self.B = B
+        self.C = C
+        self.D = D
+
+        super().__init__(**kwargs)
 
     def semi_log_linear_range_of_response(self) -> Tuple[float, float]:
         """
@@ -280,9 +235,10 @@ class FourParamLogistic(LogisticRegression):
 
 
         """
-        K = 4.680498579
-        A = self.params["A"]
-        D = self.params["D"]
+        self._check_fit_params()
+        K = 4.680498579  # Magic number from the paper
+        A = self.A
+        D = self.D
         y_bend_lower = (A - D) / (1 + 1 / K) + D  # type: ignore
         y_bend_upper = (A - D) / (1 + K) + D  # type: ignore
         return y_bend_lower, y_bend_upper
@@ -316,20 +272,19 @@ class FourParamLogistic(LogisticRegression):
     def tangent_line_at_arbitrary_point(self, x, g):
         """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
         self._check_fit_params()
-
         return FourParamLogistic._tangent_line_at_arbitrary_point(
-            x, g, self.params["A"], self.params["B"], self.params["C"], self.params["D"]
+            x, g, self.A, self.B, self.C, self.D
         )
 
-    def tangent_line_at_mid_point(self, x):
+    def tangent_line_at_midpoint(self, x):
         """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
         self._check_fit_params()
-
         return FourParamLogistic._tangent_line_at_midpoint(
-            x, self.params["A"], self.params["B"], self.params["C"], self.params["D"]
+            x, self.A, self.B, self.C, self.D
         )
 
     def generate_initial_param_values(self, x_data, y_data):
+        """Generate an initial guess for the parameters of the 4PL model based on the data."""
         x_data = np.float64(x_data)
         y_data = np.float64(y_data)
         df_data = pd.DataFrame({"x": x_data, "y": y_data})
@@ -345,14 +300,14 @@ class FourParamLogistic(LogisticRegression):
                 1.0
                 if np.mean(
                     df_data.iloc[
-                        : np.minimum(self.slope_guess_num_points_to_use, len(df_data))
+                        : min(self.slope_guess_num_points_to_use, len(df_data))
                     ][  # type: ignore
                         "y"
                     ]
                 )
                 < np.mean(
                     df_data.iloc[
-                        -np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :
+                        -min(self.slope_guess_num_points_to_use, len(df_data)) :
                     ][  # type: ignore
                         "y"
                     ]
@@ -372,7 +327,7 @@ class FourParamLogistic(LogisticRegression):
 
         partial_A = 1.0 / (1.0 + z)
         partial_B = -(
-            z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))
+            z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))  # type: ignore
         ) / (  # type: ignore
             (1.0 + z) ** 2
         )
@@ -398,14 +353,7 @@ class FourParamLogistic(LogisticRegression):
                 "Covariance matrix is not available. Please call 'fit' with appropriate data."
             )
 
-        self._check_fit_params()
-        J = self.jacobian(
-            x_data,
-            self.params["A"],
-            self.params["B"],
-            self.params["C"],
-            self.params["D"],
-        )
+        J = self.jacobian(x_data, self.A, self.B, self.C, self.D)
         pred_var = np.sum((J @ self.cov_) * J, axis=1)
 
         return np.sqrt(pred_var)
@@ -443,19 +391,19 @@ class FourParamLogistic(LogisticRegression):
         if isinstance(y, list):
             y = np.array(y, dtype=float)
 
-        z = ((self.params["A"] - self.params["D"]) / (y - self.params["D"])) - 1  # type: ignore
+        z = ((self.A - self.D) / (y - self.D)) - 1  # type: ignore
 
         # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        x = self.params["C"] * (np.sign(z) * np.abs(z) ** (1 / self.params["B"]))  # type: ignore
+        x = self.C * (np.sign(z) * np.abs(z) ** (1 / self.B))  # type: ignore
         if enforce_limits:
             if isinstance(y, (np.ndarray, pd.Series)):
-                x[y > self.params["D"]] = np.nan  # type: ignore
-                x[y < self.params["A"]] = 0  # type: ignore
+                x[y > self.D] = np.nan  # type: ignore
+                x[y < self.A] = 0  # type: ignore
             elif isinstance(y, (int, float)):
-                if y > self.params["D"]:  # type: ignore
+                if y > self.D:  # type: ignore
                     return np.nan
-                elif y < self.params["A"]:  # type: ignore
+                elif y < self.A:  # type: ignore
                     return 0
         return x
 
@@ -473,10 +421,10 @@ class FourParamLogistic(LogisticRegression):
         self._check_fit_params()
         return self._logistic_model(
             x_data,
-            self.params["A"],
-            self.params["B"],
-            self.params["C"],
-            self.params["D"],
+            self.A,
+            self.B,
+            self.C,
+            self.D,
         )
 
 
@@ -505,9 +453,13 @@ class FiveParamLogistic(LogisticRegression):
     samples based on their response signal.
     """
 
-    def __init__(self, params=None):
-        self.required_params = ["A", "B", "C", "D", "E"]
-        super().__init__(params=params)
+    def __init__(self, A=None, B=None, C=None, D=None, E=None, **kwargs):
+        self.A = A
+        self.B = B
+        self.C = C
+        self.D = D
+        self.E = E
+        super().__init__(**kwargs)
 
     @staticmethod
     def _logistic_model(x, A, B, C, D, E):
@@ -535,11 +487,11 @@ class FiveParamLogistic(LogisticRegression):
         self._check_fit_params()
         return self._tangent_line_at_midpoint(
             x,
-            self.params["A"],
-            self.params["B"],
-            self.params["C"],
-            self.params["D"],
-            self.params["E"],
+            self.A,
+            self.B,
+            self.C,
+            self.D,
+            self.E,
         )
 
     @staticmethod
@@ -561,14 +513,15 @@ class FiveParamLogistic(LogisticRegression):
         return FiveParamLogistic._tangent_line_at_arbitrary_point(
             x,
             g,
-            self.params["A"],
-            self.params["B"],
-            self.params["C"],
-            self.params["D"],
-            self.params["E"],
+            self.A,
+            self.B,
+            self.C,
+            self.D,
+            self.E,
         )
 
     def generate_initial_param_values(self, x_data, y_data):
+        """Generate an initial guess for the parameters of the 5PL model based on the data."""
         x_data = np.float64(x_data)
         y_data = np.float64(y_data)
         df_data = pd.DataFrame({"x": x_data, "y": y_data})
@@ -584,14 +537,14 @@ class FiveParamLogistic(LogisticRegression):
                 1.0
                 if np.mean(
                     df_data.iloc[
-                        : np.minimum(self.slope_guess_num_points_to_use, len(df_data))
+                        : min(self.slope_guess_num_points_to_use, len(df_data))
                     ][  # type: ignore
                         "y"
                     ]
                 )
                 < np.mean(
                     df_data.iloc[
-                        -np.minimum(self.slope_guess_num_points_to_use, len(df_data)) :
+                        -min(self.slope_guess_num_points_to_use, len(df_data)) :
                     ][  # type: ignore
                         "y"
                     ]
@@ -658,11 +611,11 @@ class FiveParamLogistic(LogisticRegression):
             )
         J = self.jacobian(
             x_data,
-            self.params["A"],
-            self.params["B"],
-            self.params["C"],
-            self.params["D"],
-            self.params["E"],
+            self.A,
+            self.B,
+            self.C,
+            self.D,
+            self.E,
         )
         pred_var = np.sum((J @ self.cov_) * J, axis=1)
 
@@ -698,26 +651,25 @@ class FiveParamLogistic(LogisticRegression):
 
         """
         self._check_fit_params()
-
         if isinstance(y, list):
             y = np.array(y, dtype=float)
 
-        z = (self.params["A"] - self.params["D"]) / (y - self.params["D"])  # type: ignore
+        z = (self.A - self.D) / (y - self.D)  # type: ignore
 
-        term1 = (np.sign(z) * np.abs(z)) ** (1 / self.params["E"]) - 1
+        term1 = (np.sign(z) * np.abs(z)) ** (1 / self.E) - 1  # type: ignore
 
         # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        x = self.params["C"] * term1 ** (1 / self.params["B"])  # type: ignore
+        x = self.C * term1 ** (1 / self.B)  # type: ignore
 
         if enforce_limits:
             if isinstance(y, (np.ndarray, pd.Series)):
-                x[y > self.params["D"]] = np.nan  # type: ignore
-                x[y < self.params["A"]] = 0  # type: ignore
+                x[y > self.D] = np.nan  # type: ignore
+                x[y < self.A] = 0  # type: ignore
             elif isinstance(y, (int, float)):
-                if y > self.params["D"]:  # type: ignore
+                if y > self.D:  # type: ignore
                     return np.nan
-                elif y < self.params["A"]:  # type: ignore
+                elif y < self.A:  # type: ignore
                     return 0
         return x
 
@@ -735,9 +687,9 @@ class FiveParamLogistic(LogisticRegression):
         self._check_fit_params()
         return self._logistic_model(
             x_data,
-            self.params["A"],
-            self.params["B"],
-            self.params["C"],
-            self.params["D"],
-            self.params["E"],
+            self.A,
+            self.B,
+            self.C,
+            self.D,
+            self.E,
         )
