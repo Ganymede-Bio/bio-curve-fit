@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "bio-curve-fit"
-version = "0.2.2"
+version = "1.0.0"
 description = "Curve fitting algorithms for bio-assays with scikit-learn api"
 authors = ["Luke Schiefelbein <luke@ganymede.bio>"]
 license = "MIT"
@@ -13,6 +13,8 @@ scikit-learn = ">=1.2.2"
 pandas = ">=1.5.3"
 matplotlib = ">=3.7.1"
 adjusttext = "^1.2.0"
+# Conditional dependency for older Python versions
+importlib-metadata = { version = "^6.0", python = "<3.8" }
 
 
 [tool.poetry.group.dev.dependencies]
@@ -31,12 +33,12 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 
-[tool.ruff]
+[tool.ruff.lint]
 select = ["D", "N"]
-ignore = ["N803", "N806"]
+ignore = ["N803", "N806", "N802"]
 # You can specify particular rules or conventions as needed
 per-file-ignores = { "tests/*"=["D"] }
 
 # Numpydoc specific configuration
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "numpy"

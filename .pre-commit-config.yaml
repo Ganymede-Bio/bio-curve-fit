@@ -12,14 +12,18 @@ repos:
       entry: black
       language: system
       types: [python]
-    - id: ruff
-      name: ruff
-      entry: ruff
-      language: system
-      types: [python]
     - id: isort
       name: isort
       entry: isort
       language: system
       args: ["--profile", "black"]
       types: [python]
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  # Ruff version.
+  rev: v0.8.1
+  hooks:
+    # Run the linter.
+    - id: ruff
+      args: [ --fix, --config=pyproject.toml ]
+    # Run the formatter.
+    - id: ruff-format

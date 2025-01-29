@@ -1,13 +1,13 @@
+"""Interfaces for standard curve models."""
+
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator  # type: ignore
 
 
 class BaseStandardCurve(ABC, BaseEstimator):
-    """
-    Interface for standard curve models.
-    """
+    """Interface for standard curve models."""
 
     # Upper and lower Limits of Detection ("LODs")
     # Estimated Limits of Detection for concentration
@@ -19,6 +19,7 @@ class BaseStandardCurve(ABC, BaseEstimator):
 
     @abstractmethod
     def predict(self, x):
+        """To be overwritten by derived classes."""
         return None
 
     @abstractmethod

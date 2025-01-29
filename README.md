@@ -22,10 +22,10 @@ source venvname/bin/activate
 ### Example usage:
 
 ```python
-from bio_curve_fit.logistic import FourPLLogistic
+from bio_curve_fit.logistic import FourParamLogistic
 
 # Instantiate model
-model = FourPLLogistic()
+model = FourParamLogistic()
 
 # create some example data
 standard_concentrations = [1, 2, 3, 4, 5]
