@@ -6,7 +6,6 @@ from typing import Tuple
 import matplotlib.figure  # type: ignore
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from matplotlib.ticker import LogFormatter  # type: ignore
 
 from .base import BaseStandardCurve
@@ -90,19 +89,16 @@ def plot_standard_curve_figure(
     **plot_kwargs,  # kwargs for general plot adjustments
 ) -> Tuple[matplotlib.figure.Figure, plt.Axes]:
     """
-    Plot a standard curve, similar to plot_standard_curve, but returns the figure and axes objects instead of saving the plot to a file for easier customization and further modification.
+    Plot a standard curve, returning the figure and axes objects for further customization.
 
     Example Usage:
     ```
-    # Add text labels to the data points
     from adjustText import adjust_text
 
-    fig, ax = plot_standard_curve_figure(x_data, y_data, fitted_model)
+    fig, ax = plot_standard_curve_figure(x_data, y_data, fitted_model, xscale="symlog", linthreshx=0.1)
     texts = []
     for x, y in zip(x_data, y_data):
-        texts.append(ax.text(x, y, f"x={x:.2f}, y={y:.2f})", fontsize=13, ha="right"))
-
-    # Adjust text labels to avoid overlap
+        texts.append(ax.text(x, y, f"x={x:.2f}, y={y:.2f}", fontsize=13, ha="right"))
     adjust_text(texts, ax=ax)
     ```
     """
@@ -118,33 +114,61 @@ def plot_standard_curve_figure(
 
     fig, ax = plt.subplots()
 
-    ax.set_xscale(plot_kwargs.get("xscale", "log"))  # type: ignore
-    ax.set_yscale(plot_kwargs.get("yscale", "log"))  # type: ignore
+    # Set the x-axis scale
+    xscale = plot_kwargs.get("xscale", "log")
+    if xscale == "symlog":
+        # Get linthresh for x (default can be adjusted)
+        linthreshx = plot_kwargs.get("linthreshx", 0.01)
+        ax.set_xscale("symlog", linthresh=linthreshx)
+        # Use a formatter appropriate for symlog scales
+        formatter = plot_kwargs.get("formatter", LogFormatter())
+    else:
+        ax.set_xscale(xscale)
+        formatter = plot_kwargs.get("formatter", LogFormatter())
 
-    EPSILON = 0.01
-    x_min = np.log10(max(min(x_data), EPSILON))
-    x_max = max(x_data) * 2
+    # Set the y-axis scale similarly
+    yscale = plot_kwargs.get("yscale", "log")
+    if yscale == "symlog":
+        linthreshy = plot_kwargs.get("linthreshy", 1e-2)
+        ax.set_yscale("symlog", linthresh=linthreshy)
+    else:
+        ax.set_yscale(yscale)
 
-    x = np.logspace(x_min, np.log10(x_max), 100)  # type: ignore
+    # Generate x values for the fitted curve.
+    if xscale == "symlog":
+        # With symlog, we can safely include values near zero.
+        x_min = min(x_data)
+        x_max = max(x_data) * 2
+        x = np.concatenate(
+            [
+                np.linspace(x_min, linthreshx, 50),
+                np.logspace(np.log10(linthreshx), np.log10(x_max), 50),
+            ]
+        )
+    else:
+        # For log scale, ensure a lower bound above zero.
+        epsilon = plot_kwargs.get("epsilon", 1e-2)
+        x_min = np.log10(max(min(x_data), epsilon))
+        x_max = max(x_data) * 2
+        x = np.logspace(x_min, np.log10(x_max), 100)
+
     y_pred = fitted_model.predict(x)
-
     ax.plot(x, y_pred, **curve_kwargs)
-    if y_data is not None:
-        data = pd.DataFrame({"x": x_data, "y": y_data})
-        filtered_data = data[data["x"] > 0]
-        ax.scatter(filtered_data["x"], filtered_data["y"], **data_kwargs)  # type: ignore
 
-    formatter = plot_kwargs.get("formatter", LogFormatter())
-    ax.xaxis.set_major_formatter(formatter)  # type: ignore
+    if y_data is not None:
+        # For log scale, you might want to filter out non-positive values.
+        ax.scatter(x_data, y_data, **data_kwargs)
+
+    ax.xaxis.set_major_formatter(formatter)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_title(title, **plot_kwargs.get("title_kwargs", {}))
 
     llod_response, ulod_response = fitted_model.LLOD_y_, fitted_model.ULOD_y_
     if llod_response is not None:
-        ax.axhline(llod_response, **llod_kwargs)  # type: ignore
+        ax.axhline(llod_response, **llod_kwargs)
     if ulod_response is not None:
-        ax.axhline(ulod_response, **ulod_kwargs)  # type: ignore
+        ax.axhline(ulod_response, **ulod_kwargs)
 
     ax.legend()
     fig.tight_layout()

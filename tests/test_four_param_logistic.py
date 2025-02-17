@@ -41,7 +41,7 @@ def test_fit_and_plot():
     np.random.seed(42)  # reset in test func as it seems to gett reset in CI
     TEST_PARAMS = {"A": 1, "B": 1, "C": 2, "D": 3}
 
-    x_data = np.logspace(0.00001, 7, 100, base=np.e)  # type: ignore
+    x_data = np.logspace(-6, 7, 100, base=np.e)  # type: ignore
     # generate y-data based on the test parameters
     y_data = FourParamLogistic._logistic_model(x_data, **TEST_PARAMS)
     y_data_with_noise = y_data + np.random.normal(0, 0.01, len(y_data))
@@ -70,6 +70,7 @@ def test_fit_and_plot():
         y_data_with_noise,
         model,
         llod_kwargs={"color": "pink"},
+        xscale="symlog",
     )
     # create tmp file to save the image
     compare_bytes_to_reference(img_bytes, "reference_plots/test_fit_and_plot.png")
