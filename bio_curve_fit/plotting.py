@@ -156,7 +156,6 @@ def plot_standard_curve_figure(
     ax.plot(x, y_pred, **curve_kwargs)
 
     if y_data is not None:
-        # For log scale, you might want to filter out non-positive values.
         ax.scatter(x_data, y_data, **data_kwargs)
 
     ax.xaxis.set_major_formatter(formatter)
