@@ -6,10 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Setup
 ```bash
-poetry install       # Install dependencies
+poetry install       # Install all dependencies including dev deps (creates .venv if it doesn't exist)
 poetry shell        # Activate virtual environment
 pre-commit install  # Install pre-commit hooks
 ```
+
+**Important Notes:**
+- If `.venv` directory doesn't exist, `poetry install` will create it automatically
+- `poetry install` installs both main and dev dependencies by default
+- Always activate the virtual environment before running git commands to ensure pre-commit hooks work properly
+- When creating PRs, remember to update the version in `pyproject.toml`
 
 ### Testing
 ```bash
