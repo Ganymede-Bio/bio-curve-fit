@@ -214,7 +214,23 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
 
 
 class FourParamLogistic(LogisticRegression):
-    """Implementation of the 4 Parameter Logistic (4PL) model."""
+    """Implementation of the 4 Parameter Logistic (4PL) model.
+
+    Supports parameter constraints by fixing specific parameters during initialization.
+    For example, to create a 3PL model with fixed Hill's slope:
+        model = FourParamLogistic(B=1.0)
+
+    Parameters
+    ----------
+    A : float, optional
+        Minimum asymptote. If provided, this parameter will be fixed during fitting.
+    B : float, optional
+        Hill's slope. If provided, this parameter will be fixed during fitting.
+    C : float, optional
+        Inflection point (EC50). If provided, this parameter will be fixed during fitting.
+    D : float, optional
+        Maximum asymptote. If provided, this parameter will be fixed during fitting.
+    """
 
     def __init__(self, A=None, B=None, C=None, D=None, **kwargs):
         self.A = A
@@ -282,6 +298,114 @@ class FourParamLogistic(LogisticRegression):
         return FourParamLogistic._tangent_line_at_midpoint(
             x, self.A, self.B, self.C, self.D
         )
+
+    def fit(
+        self,
+        x_data,
+        y_data,
+        weight_func=None,
+        LOD_func=None,
+        initial_param_values=None,
+        **kwargs,
+    ):
+        """
+        Fit the 4PL model with support for fixed parameters.
+
+        If any of A, B, C, D are set to non-None values during initialization,
+        those parameters will be held constant during fitting.
+        """
+        x_data = np.float64(x_data)
+        y_data = np.float64(y_data)
+
+        # Determine which parameters are fixed
+        fixed_params = {}
+        free_param_names = []
+
+        if self.A is not None:
+            fixed_params["A"] = self.A
+        else:
+            free_param_names.append("A")
+
+        if self.B is not None:
+            fixed_params["B"] = self.B
+        else:
+            free_param_names.append("B")
+
+        if self.C is not None:
+            fixed_params["C"] = self.C
+        else:
+            free_param_names.append("C")
+
+        if self.D is not None:
+            fixed_params["D"] = self.D
+        else:
+            free_param_names.append("D")
+
+        if len(free_param_names) == 0:
+            # All parameters are fixed, no fitting needed
+            if LOD_func is None:
+                LOD_func = self._calculate_lod_replicate_variance
+            self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(
+                x_data, y_data
+            )
+            return self
+
+        # Create a wrapper function that only optimizes free parameters
+        def constrained_model(x, *free_params):
+            # Reconstruct full parameter set
+            param_dict = fixed_params.copy()
+            for name, value in zip(free_param_names, free_params):
+                param_dict[name] = value
+            return self._logistic_model(
+                x, param_dict["A"], param_dict["B"], param_dict["C"], param_dict["D"]
+            )
+
+        # Generate initial values for free parameters only
+        if not initial_param_values:
+            full_initial = self.generate_initial_param_values(x_data, y_data)
+            param_name_to_idx = {"A": 0, "B": 1, "C": 2, "D": 3}
+            initial_param_values = [
+                full_initial[param_name_to_idx[name]] for name in free_param_names
+            ]
+
+        if LOD_func is None:
+            LOD_func = self._calculate_lod_replicate_variance
+
+        absolute_sigma = False
+        weights = None
+        if weight_func is not None:
+            weights = weight_func(y_data)
+            absolute_sigma = True
+
+        curve_fit_kwargs = {
+            "f": constrained_model,
+            "xdata": x_data,
+            "ydata": y_data,
+            "p0": initial_param_values,
+            "maxfev": 10000,
+            "sigma": weights,
+            "absolute_sigma": absolute_sigma,
+        }
+
+        # overwrite parameters with any kwargs passed in
+        for k, v in kwargs.items():
+            curve_fit_kwargs[k] = v
+
+        # Perform the curve fit
+        fitted_params, cov = curve_fit(**curve_fit_kwargs)  # type: ignore
+
+        # Set the fitted parameters
+        for name, value in zip(free_param_names, fitted_params):
+            setattr(self, name, value)
+
+        # Store information about which parameters were fixed for later use
+        self._free_param_names = free_param_names
+        self._has_fixed_params = len(free_param_names) < 4
+
+        self.cov_ = cov
+        self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
+
+        return self
 
     def generate_initial_param_values(self, x_data, y_data):
         """Generate an initial guess for the parameters of the 4PL model based on the data."""
@@ -353,6 +477,13 @@ class FourParamLogistic(LogisticRegression):
                 "Covariance matrix is not available. Please call 'fit' with appropriate data."
             )
 
+        # Check if any parameters were fixed during fitting
+        if hasattr(self, "_has_fixed_params") and self._has_fixed_params:
+            raise NotImplementedError(
+                "Confidence bands are not yet supported for models with fixed parameters. "
+                "Use FourParamLogistic() without parameter constraints for confidence band calculations."
+            )
+
         J = self.jacobian(x_data, self.A, self.B, self.C, self.D)
         pred_var = np.sum((J @ self.cov_) * J, axis=1)
 
@@ -363,6 +494,13 @@ class FourParamLogistic(LogisticRegression):
 
         TODO: still need to double-check the math here.
         """
+        # Check if any parameters were fixed during fitting
+        if hasattr(self, "_has_fixed_params") and self._has_fixed_params:
+            raise NotImplementedError(
+                "Prediction bands are not yet supported for models with fixed parameters. "
+                "Use FourParamLogistic() without parameter constraints for prediction band calculations."
+            )
+
         ss = (y_data - self.predict(x_data)) ** 2
         df = len(x_data) - 4  # 4 parameters
 
