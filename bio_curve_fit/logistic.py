@@ -124,6 +124,31 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
                     " or initialize the model object with non-null parameters."
                 )
 
+    def _calculate_dof_and_t_critical(self, n_params, n_data_points=None, alpha=0.05):
+        """Calculate degrees of freedom and critical t-value for confidence/prediction bands.
+
+        Parameters
+        ----------
+        n_params : int
+            Number of parameters in the model
+        n_data_points : int, optional
+            Number of data points. If None, uses self.n_data_points_
+        alpha : float, default=0.05
+            Significance level for confidence/prediction interval
+
+        Returns
+        -------
+        tuple[int, float]
+            Degrees of freedom and critical t-value
+        """
+        if n_data_points is None:
+            n_data_points = self.n_data_points_
+
+        dof = n_data_points - n_params
+        t_crit = t.ppf(1.0 - alpha / 2.0, dof)
+
+        return dof, t_crit
+
     def fit(
         self,
         x_data,
@@ -216,6 +241,98 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
     def generate_initial_param_values(self, x_data, y_data):
         """Override this method in subclasses."""
         pass
+
+    @abstractmethod
+    def jacobian(self, x_data):
+        """Calculate the Jacobian matrix for the model."""
+        pass
+
+    def _predict_bands(self, x_data, alpha=0.05, y_data=None):
+        """
+        Calculate confidence or prediction bands.
+
+        Parameters
+        ----------
+        x_data : array-like
+            Input data points for which to calculate bands
+        alpha : float, default=0.05
+            Significance level for interval (0.05 for 95% interval)
+        y_data : array-like, optional
+            Training response data. If provided, calculates prediction bands.
+            If None, calculates confidence bands.
+
+        Returns
+        -------
+        np.ndarray
+            Half-width of band at each x_data point
+        """
+        if self.cov_ is None:
+            raise ValueError(
+                "Covariance matrix is not available. Please call 'fit' with appropriate data."
+            )
+
+        # Calculate degrees of freedom and critical t-value
+        n_params = len(self.get_params())
+        n_data_points = len(y_data) if y_data is not None else None
+        dof, t_crit = self._calculate_dof_and_t_critical(
+            n_params, n_data_points=n_data_points, alpha=alpha
+        )
+
+        # Calculate confidence variance
+        J = self.jacobian(x_data)
+        conf_var = np.sum((J @ self.cov_) * J, axis=1)
+
+        # For prediction bands, add residual variance
+        if y_data is not None:
+            residuals = y_data - self.predict(x_data)
+            mse = np.sum(residuals**2) / dof
+            pred_var = conf_var + mse
+        else:
+            pred_var = conf_var
+
+        return t_crit * np.sqrt(pred_var)
+
+    def predict_confidence_band(self, x_data, alpha=0.05):
+        """
+        Predict confidence bands of data points.
+
+        Parameters
+        ----------
+        x_data : array-like
+            Input data points for which to calculate confidence bands
+        alpha : float, default=0.05
+            Significance level for confidence interval (0.05 for 95% confidence)
+
+        Returns
+        -------
+        np.ndarray
+            Half-width of confidence band at each x_data point
+        """
+        return self._predict_bands(x_data, alpha=alpha)
+
+    def predict_prediction_band(self, x_data, y_data, alpha=0.05):
+        """Predict prediction bands of data points.
+
+        Parameters
+        ----------
+        x_data : array-like
+            Input data points for which to calculate prediction bands
+        y_data : array-like
+            Training response data used to calculate residual variance
+        alpha : float, default=0.05
+            Significance level for prediction interval (0.05 for 95% prediction)
+
+        Returns
+        -------
+        np.ndarray
+            Half-width of prediction band at each x_data point
+
+        Notes
+        -----
+        Prediction bands include both parameter uncertainty (from confidence bands)
+        and residual variance from the model fit.
+        """
+        return self._predict_bands(x_data, alpha=alpha, y_data=y_data)
 
 
 class FourParamLogistic(LogisticRegression):
@@ -450,18 +567,20 @@ class FourParamLogistic(LogisticRegression):
 
         return initial_guess
 
-    @staticmethod
-    def jacobian(x_data, A, B, C, D):
+    def jacobian(self, x_data):
         """Jacobian matrix of the 4PL function with respect to A, B, C, D."""
-        z = (x_data / C) ** B
+        self._check_fit_params()
+        z = (x_data / self.C) ** self.B
 
         partial_A = 1.0 / (1.0 + z)
         partial_B = -(
-            z * (A - D) * np.log(np.maximum(x_data / C, np.finfo(float).eps))  # type: ignore
+            z
+            * (self.A - self.D)
+            * np.log(np.maximum(x_data / self.C, np.finfo(float).eps))  # type: ignore
         ) / (  # type: ignore
             (1.0 + z) ** 2
         )
-        partial_C = (B * z * (A - D)) / (C * (1.0 + z) ** 2)
+        partial_C = (self.B * z * (self.A - self.D)) / (self.C * (1.0 + z) ** 2)
         partial_D = 1.0 - 1.0 / (1.0 + z)
 
         # Jacobian matrix
@@ -483,18 +602,7 @@ class FourParamLogistic(LogisticRegression):
         -------
         np.ndarray
             Half-width of confidence band at each x_data point
-
-        See:
-            https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_graphing_confidence_and_predic.htm
-            https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_how_confidence_and_prediction_.htm
-            https://stats.stackexchange.com/questions/15423/how-to-compute-prediction-bands-for-non-linear-regression
-
         """
-        if self.cov_ is None:
-            raise ValueError(
-                "Covariance matrix is not available. Please call 'fit' with appropriate data."
-            )
-
         # Check if any parameters were fixed during fitting
         if hasattr(self, "_has_fixed_params") and self._has_fixed_params:
             raise NotImplementedError(
@@ -502,17 +610,7 @@ class FourParamLogistic(LogisticRegression):
                 "Use FourParamLogistic() without parameter constraints for confidence band calculations."
             )
 
-        # Calculate degrees of freedom
-        n_params = 4  # A, B, C, D
-        dof = self.n_data_points_ - n_params
-
-        # Critical t-value for confidence interval
-        t_crit = t.ppf(1.0 - alpha / 2.0, dof)
-
-        J = self.jacobian(x_data, self.A, self.B, self.C, self.D)
-        pred_var = np.sum((J @ self.cov_) * J, axis=1)
-
-        return t_crit * np.sqrt(pred_var)
+        return super().predict_confidence_band(x_data, alpha=alpha)
 
     def predict_prediction_band(self, x_data, y_data, alpha=0.05):
         """Predict prediction bands of data points.
@@ -543,25 +641,7 @@ class FourParamLogistic(LogisticRegression):
                 "Use FourParamLogistic() without parameter constraints for prediction band calculations."
             )
 
-        # Calculate degrees of freedom
-        n_params = 4  # A, B, C, D
-        dof = len(y_data) - n_params
-
-        # Critical t-value for prediction interval
-        t_crit = t.ppf(1.0 - alpha / 2.0, dof)
-
-        # Calculate residual variance
-        residuals = y_data - self.predict(x_data)
-        mse = np.sum(residuals**2) / dof
-
-        # Get confidence band variance (without t-multiplier)
-        J = self.jacobian(x_data, self.A, self.B, self.C, self.D)
-        conf_var = np.sum((J @ self.cov_) * J, axis=1)
-
-        # Prediction variance = confidence variance + residual variance
-        pred_var = conf_var + mse
-
-        return t_crit * np.sqrt(pred_var)
+        return super().predict_prediction_band(x_data, y_data, alpha=alpha)
 
     def predict_inverse(
         self, y: Union[float, int, np.ndarray, Iterable[float]], enforce_limits=True
@@ -754,129 +834,41 @@ class FiveParamLogistic(LogisticRegression):
 
         return initial_guess
 
-    @staticmethod
-    def jacobian(x_data, A, B, C, D, E):
-        """Jacobian matrix of the 5PL function with respect to A, B, C, D, S."""
-        z = (x_data / C) ** B
+    def jacobian(self, x_data):
+        """Jacobian matrix of the 5PL function with respect to A, B, C, D, E."""
+        self._check_fit_params()
+        z = (x_data / self.C) ** self.B
 
-        partial_A = 1.0 / (1.0 + z) ** E
+        partial_A = 1.0 / (1.0 + z) ** self.E
 
         partial_B_num = (
-            -(A - D)
-            * E
+            -(self.A - self.D)
+            * self.E
             * z
             * np.log(
                 np.maximum(
-                    np.array(x_data, dtype=float) / C,
+                    np.array(x_data, dtype=float) / self.C,
                     np.finfo(float).eps * np.ones_like(x_data),
                 )
             )
         )
-        partial_B_denom = (1 + z) ** (E + 1)
+        partial_B_denom = (1 + z) ** (self.E + 1)
         partial_B = partial_B_num / partial_B_denom
 
-        partial_C_num = -(A - D) * E * B * z
-        partial_C_denom = C * (1 + z) ** (E + 1)
+        partial_C_num = -(self.A - self.D) * self.E * self.B * z
+        partial_C_denom = self.C * (1 + z) ** (self.E + 1)
         partial_C = partial_C_num / partial_C_denom
 
-        partial_D = 1.0 - 1.0 / (1.0 + z) ** E
+        partial_D = 1.0 - 1.0 / (1.0 + z) ** self.E
 
-        partial_E_num = -(A - D) * np.log(1 + z)
-        partial_E_denom = (1 + z) ** E
+        partial_E_num = -(self.A - self.D) * np.log(1 + z)
+        partial_E_denom = (1 + z) ** self.E
 
         partial_E = partial_E_num / partial_E_denom
 
         # Jacobian matrix
         J = np.array([partial_A, partial_B, partial_C, partial_D, partial_E]).T
         return J
-
-    def predict_confidence_band(self, x_data, alpha=0.05):
-        """
-        Predict confidence bands of data points.
-
-        Parameters
-        ----------
-        x_data : array-like
-            Input data points for which to calculate confidence bands
-        alpha : float, default=0.05
-            Significance level for confidence interval (0.05 for 95% confidence)
-
-        Returns
-        -------
-        np.ndarray
-            Half-width of confidence band at each x_data point
-
-        See:
-            https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_graphing_confidence_and_predic.htm
-            https://www.graphpad.com/guides/prism/latest/curve-fitting/reg_how_confidence_and_prediction_.htm
-            https://stats.stackexchange.com/questions/15423/how-to-compute-prediction-bands-for-non-linear-regression
-
-        """
-        if self.cov_ is None:
-            raise ValueError(
-                "Covariance matrix is not available. Please call 'fit' with appropriate data."
-            )
-
-        # Calculate degrees of freedom
-        n_params = 5  # A, B, C, D, E
-        dof = self.n_data_points_ - n_params
-
-        # Critical t-value for confidence interval
-        t_crit = t.ppf(1.0 - alpha / 2.0, dof)
-
-        J = self.jacobian(
-            x_data,
-            self.A,
-            self.B,
-            self.C,
-            self.D,
-            self.E,
-        )
-        pred_var = np.sum((J @ self.cov_) * J, axis=1)
-
-        return t_crit * np.sqrt(pred_var)
-
-    def predict_prediction_band(self, x_data, y_data, alpha=0.05):
-        """Predict prediction bands of data points.
-
-        Parameters
-        ----------
-        x_data : array-like
-            Input data points for which to calculate prediction bands
-        y_data : array-like
-            Training response data used to calculate residual variance
-        alpha : float, default=0.05
-            Significance level for prediction interval (0.05 for 95% prediction)
-
-        Returns
-        -------
-        np.ndarray
-            Half-width of prediction band at each x_data point
-
-        Notes
-        -----
-        Prediction bands include both parameter uncertainty (from confidence bands)
-        and residual variance from the model fit.
-        """
-        # Calculate degrees of freedom
-        n_params = 5  # A, B, C, D, E
-        dof = len(y_data) - n_params
-
-        # Critical t-value for prediction interval
-        t_crit = t.ppf(1.0 - alpha / 2.0, dof)
-
-        # Calculate residual variance
-        residuals = y_data - self.predict(x_data)
-        mse = np.sum(residuals**2) / dof
-
-        # Get confidence band variance (without t-multiplier)
-        J = self.jacobian(x_data, self.A, self.B, self.C, self.D, self.E)
-        conf_var = np.sum((J @ self.cov_) * J, axis=1)
-
-        # Prediction variance = confidence variance + residual variance
-        pred_var = conf_var + mse
-
-        return t_crit * np.sqrt(pred_var)
 
     def predict_inverse(
         self, y: Union[float, int, np.ndarray, Iterable[float]], enforce_limits=True
@@ -1014,10 +1006,10 @@ class LogDoseThreeParamLogistic(LogisticRegression):
                     return np.nan
         return x
 
-    @staticmethod
-    def jacobian(x_data, A, D, C):
+    def jacobian(self, x_data):
         """Jacobian matrix of the Log-Dose 3PL function with respect to A, D, C."""
-        exp_term = 10 ** (C - x_data)
+        self._check_fit_params()
+        exp_term = 10 ** (self.C - x_data)
         denominator = (1 + exp_term) ** 2
 
         # ∂Y/∂A = 1 - 1/(1 + 10^(C-x)) = 10^(C-x)/(1 + 10^(C-x))
@@ -1027,85 +1019,11 @@ class LogDoseThreeParamLogistic(LogisticRegression):
         partial_D = 1 / (1 + exp_term)
 
         # ∂Y/∂C = (D-A) * ln(10) * 10^(C-x) / (1 + 10^(C-x))^2
-        partial_C = (D - A) * np.log(10) * exp_term / denominator
+        partial_C = (self.D - self.A) * np.log(10) * exp_term / denominator
 
         # Jacobian matrix
         J = np.array([partial_A, partial_D, partial_C]).T
         return J
-
-    def predict_confidence_band(self, x_data, alpha=0.05):
-        """Predict confidence bands of data points.
-
-        Parameters
-        ----------
-        x_data : array-like
-            Input data points for which to calculate confidence bands
-        alpha : float, default=0.05
-            Significance level for confidence interval (0.05 for 95% confidence)
-
-        Returns
-        -------
-        np.ndarray
-            Half-width of confidence band at each x_data point
-        """
-        if self.cov_ is None:
-            raise ValueError(
-                "Covariance matrix is not available. Please call 'fit' with appropriate data."
-            )
-
-        # Calculate degrees of freedom
-        n_params = 3  # A, D, C
-        dof = self.n_data_points_ - n_params
-
-        # Critical t-value for confidence interval
-        t_crit = t.ppf(1.0 - alpha / 2.0, dof)
-
-        J = self.jacobian(x_data, self.A, self.D, self.C)
-        pred_var = np.sum((J @ self.cov_) * J, axis=1)
-
-        return t_crit * np.sqrt(pred_var)
-
-    def predict_prediction_band(self, x_data, y_data, alpha=0.05):
-        """Predict prediction bands of data points.
-
-        Parameters
-        ----------
-        x_data : array-like
-            Input data points for which to calculate prediction bands
-        y_data : array-like
-            Training response data used to calculate residual variance
-        alpha : float, default=0.05
-            Significance level for prediction interval (0.05 for 95% prediction)
-
-        Returns
-        -------
-        np.ndarray
-            Half-width of prediction band at each x_data point
-
-        Notes
-        -----
-        Prediction bands include both parameter uncertainty (from confidence bands)
-        and residual variance from the model fit.
-        """
-        # Calculate degrees of freedom
-        n_params = 3  # A, D, C
-        dof = len(y_data) - n_params
-
-        # Critical t-value for prediction interval
-        t_crit = t.ppf(1.0 - alpha / 2.0, dof)
-
-        # Calculate residual variance
-        residuals = y_data - self.predict(x_data)
-        mse = np.sum(residuals**2) / dof
-
-        # Get confidence band variance (without t-multiplier)
-        J = self.jacobian(x_data, self.A, self.D, self.C)
-        conf_var = np.sum((J @ self.cov_) * J, axis=1)
-
-        # Prediction variance = confidence variance + residual variance
-        pred_var = conf_var + mse
-
-        return t_crit * np.sqrt(pred_var)
 
     def generate_initial_param_values(self, x_data, y_data):
         """Generate initial guess for Log-Dose 3PL model parameters."""

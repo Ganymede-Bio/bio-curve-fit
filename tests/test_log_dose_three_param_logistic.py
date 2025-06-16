@@ -41,10 +41,14 @@ def test_fit_and_predict():
 
 def test_jacobian():
     """Test Jacobian calculation."""
-    TEST_PARAMS = {"A": 1, "D": 3, "C": 2}
-    x_data = np.array([1.0, 2.0, 3.0])
+    # Create and fit a model first
+    model = LogDoseThreeParamLogistic()
+    model.A = 1
+    model.D = 3
+    model.C = 2
 
-    J = LogDoseThreeParamLogistic.jacobian(x_data, **TEST_PARAMS)
+    x_data = np.array([1.0, 2.0, 3.0])
+    J = model.jacobian(x_data)
 
     # Check shape
     assert J.shape == (3, 3)  # 3 data points, 3 parameters
