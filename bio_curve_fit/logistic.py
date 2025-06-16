@@ -55,7 +55,7 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         slope_guess_num_points_to_use: int = 3,
     ):
         self.cov_ = None
-        self.n_data_points_ = (
+        self.n_samples_ = (
             None  # Store number of training data points for DOF calculation
         )
         # Estimated Limits of Detection for response signal
@@ -142,7 +142,7 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
             Degrees of freedom and critical t-value
         """
         if n_data_points is None:
-            n_data_points = self.n_data_points_
+            n_data_points = self.n_samples_
 
         dof = n_data_points - n_params
         t_crit = t.ppf(1.0 - alpha / 2.0, dof)
@@ -169,8 +169,8 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
             Thus for a typical 1/y^2 weighting, `weight_func` should be `lambda
             y_data: y_data`
         """
-        x_data = np.float64(x_data)
-        y_data = np.float64(y_data)
+        x_data = np.array(x_data, dtype=np.float64)
+        y_data = np.array(y_data, dtype=np.float64)
         df_data = pd.DataFrame({"x": x_data, "y": y_data})
         df_data.sort_values(by="x", inplace=True)
 
@@ -210,7 +210,7 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         self.set_params(**params_dict)
 
         self.cov_ = cov
-        self.n_data_points_ = len(x_data)  # Store for DOF calculation
+        self.n_samples_ = len(x_data)  # Store for DOF calculation
         self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
 
         return self
@@ -308,6 +308,8 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         np.ndarray
             Half-width of confidence band at each x_data point
         """
+        if not (0 < alpha < 1):
+            raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
         return self._predict_bands(x_data, alpha=alpha)
 
     def predict_prediction_band(self, x_data, y_data, alpha=0.05):
@@ -332,6 +334,8 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         Prediction bands include both parameter uncertainty (from confidence bands)
         and residual variance from the model fit.
         """
+        if not (0 < alpha < 1):
+            raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
         return self._predict_bands(x_data, alpha=alpha, y_data=y_data)
 
 
@@ -436,8 +440,8 @@ class FourParamLogistic(LogisticRegression):
         If any of A, B, C, D are set to non-None values during initialization,
         those parameters will be held constant during fitting.
         """
-        x_data = np.float64(x_data)
-        y_data = np.float64(y_data)
+        x_data = np.array(x_data, dtype=np.float64)
+        y_data = np.array(y_data, dtype=np.float64)
 
         # Determine which parameters are fixed
         fixed_params = {}
@@ -525,7 +529,7 @@ class FourParamLogistic(LogisticRegression):
         self._has_fixed_params = len(free_param_names) < 4
 
         self.cov_ = cov
-        self.n_data_points_ = len(x_data)  # Store for DOF calculation
+        self.n_samples_ = len(x_data)  # Store for DOF calculation
         self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
 
         return self
@@ -603,6 +607,8 @@ class FourParamLogistic(LogisticRegression):
         np.ndarray
             Half-width of confidence band at each x_data point
         """
+        if not (0 < alpha < 1):
+            raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
         # Check if any parameters were fixed during fitting
         if hasattr(self, "_has_fixed_params") and self._has_fixed_params:
             raise NotImplementedError(
@@ -634,6 +640,8 @@ class FourParamLogistic(LogisticRegression):
         Prediction bands include both parameter uncertainty (from confidence bands)
         and residual variance from the model fit.
         """
+        if not (0 < alpha < 1):
+            raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
         # Check if any parameters were fixed during fitting
         if hasattr(self, "_has_fixed_params") and self._has_fixed_params:
             raise NotImplementedError(
