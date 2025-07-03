@@ -1,37 +1,41 @@
-[tool.poetry]
+[project]
 name = "bio-curve-fit"
-version = "1.1.0"
+version = "1.1.1"
 description = "Curve fitting algorithms for bio-assays with scikit-learn api"
-authors = ["Luke Schiefelbein <luke@ganymede.bio>"]
-license = "MIT"
+authors = [
+    {name = "Luke Schiefelbein", email = "luke@ganymede.bio"}
+]
+license = {text = "MIT"}
 readme = "README.md"
-packages = [{include = "bio_curve_fit"}]
+keywords = ["curve-fitting", "bio-assay", "scikit-learn", "data-science"]
+requires-python = ">=3.8.12"
+dependencies = [
+    "scikit-learn>=1.2.2",
+    "pandas>=1.5.3",
+    "matplotlib>=3.7.1",
+    "adjusttext>=1.2.0",
+    "importlib-metadata>=6.0; python_version<'3.8'",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.8.12"
-scikit-learn = ">=1.2.2"
-pandas = ">=1.5.3"
-matplotlib = ">=3.7.1"
-adjusttext = "^1.2.0"
-# Conditional dependency for older Python versions
-importlib-metadata = { version = "^6.0", python = "<3.8" }
+[project.urls]
+Repository = "https://github.com/Ganymede-Bio/bio-curve-fit/"
 
-
-[tool.poetry.group.dev.dependencies]
-mypy = ">=1.7.0"
-ipython = "8.12.2"
-pytest = ">=7.4.3"
-data-science-types = ">=0.2.23"
-ruff = ">=0.1.5"
-ipykernel = "^6.26.0"
-pre-commit = "^3.5.0"
-isort = "^5.12.0"
-coverage = "^7.3.2"
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.7.0",
+    "ipython==8.12.2",
+    "pytest>=7.4.3",
+    "data-science-types>=0.2.23",
+    "ruff>=0.1.5",
+    "ipykernel>=6.26.0",
+    "pre-commit>=3.5.0",
+    "isort>=5.12.0",
+    "coverage>=7.3.2",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
-
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.ruff.lint]
 select = ["D", "N"]
