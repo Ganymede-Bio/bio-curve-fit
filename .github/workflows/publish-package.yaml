@@ -16,12 +16,14 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install Poetry
-      run: pip install poetry
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
 
     - name: Build and Publish to PyPI
       env:
-        POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_API_TOKEN }}
+        UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
       run: |
-        poetry config pypi-token.pypi $POETRY_PYPI_TOKEN_PYPI
-        poetry publish --build
+        uv build
+        uv publish

@@ -1,9 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(poetry run pytest:*)",
+      "Bash(uv run pytest:*)",
       "WebFetch(domain:stats.stackexchange.com)",
-      "Bash(poetry run:*)"
+      "Bash(uv run:*)",
+      "Bash(rg:*)"
     ],
     "deny": []
   }

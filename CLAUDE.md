@@ -6,31 +6,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Setup
 ```bash
-poetry install       # Install all dependencies including dev deps (creates .venv if it doesn't exist)
-poetry shell        # Activate virtual environment
+uv sync              # Install all dependencies including dev deps (creates .venv if it doesn't exist)
+source .venv/bin/activate  # Activate virtual environment (Linux/Mac)
 pre-commit install  # Install pre-commit hooks
 ```
 
 **Important Notes:**
-- If `.venv` directory doesn't exist, `poetry install` will create it automatically
-- `poetry install` installs both main and dev dependencies by default
+- If `.venv` directory doesn't exist, `uv sync` will create it automatically
+- `uv sync` installs both main and dev dependencies by default
 - Always activate the virtual environment before running git commands to ensure pre-commit hooks work properly
 - When creating PRs, remember to update the version in `pyproject.toml`
 
 ### Testing
 ```bash
-poetry run pytest                    # Run all tests
-poetry run pytest tests/test_*.py    # Run specific test file
-poetry run pytest -k "test_name"    # Run tests matching pattern
-coverage run -m pytest && coverage report  # Run tests with coverage
+uv run pytest                    # Run all tests
+uv run pytest tests/test_*.py    # Run specific test file
+uv run pytest -k "test_name"    # Run tests matching pattern
+uv run coverage run -m pytest && uv run coverage report  # Run tests with coverage
 ```
 
 ### Code Quality
 ```bash
-poetry run ruff check               # Lint code
-poetry run ruff check --fix         # Auto-fix linting issues
-poetry run mypy bio_curve_fit/      # Type checking
-poetry run isort bio_curve_fit/     # Sort imports
+uv run ruff check               # Lint code
+uv run ruff check --fix         # Auto-fix linting issues
+uv run mypy bio_curve_fit/      # Type checking
+uv run isort bio_curve_fit/     # Sort imports
 ```
 
 ## Architecture

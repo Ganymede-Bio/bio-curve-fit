@@ -1,12 +1,12 @@
 ## Development Setup
 
-This project uses [Poetry](https://python-poetry.org/docs/) for dependency management.
+This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
 
 To install dependencies, run the following commands from the root directory of the project:
 
 ```shell
-poetry install
-poetry shell
+uv sync --extra dev
+source .venv/bin/activate
 ```
 
 Install pre-commit hooks for automatic style and type checking:
@@ -17,11 +17,11 @@ $ pre-commit install
 
 ## Tests
 
-Run `pytest` from the root directory of the project. Please add tests for any new functionality and keep coverage above ~95%. To check test coverage, run:
+Run `uv run pytest` from the root directory of the project. Please add tests for any new functionality and keep coverage above ~95%. To check test coverage, run:
 
 ```shell
-coverage run -m pytest
-coverage report
+uv run coverage run -m pytest
+uv run coverage report
 ```
 
 ## Examples
