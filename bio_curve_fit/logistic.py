@@ -788,10 +788,22 @@ class LogDoseFourParamLogistic(FiveParamLogistic):
         """
         return A + (D - A) / (1 + 10 ** ((C - x) * B))
 
-    def predict_inverse(self, y):
+    def predict_inverse(
+        self,
+        y: Union[float, int, np.ndarray, Iterable[float]],
+        enforce_limits: bool = True,
+    ):
         """Inverse Log-Dose 4PL model.
 
         Overrides parent to use log-dose specific inverse formula.
+
+        Parameters
+        ----------
+        y: float or iterable
+            The response value for which the corresponding x-value will be calculated.
+        enforce_limits: bool
+            If True, return np.nan for y-values above the maximum asymptote (D) of the curve,
+            and -inf for y-values below the minimum asymptote (A) of the curve.
         """
         self._check_fit_params()
         if isinstance(y, list):
@@ -800,6 +812,16 @@ class LogDoseFourParamLogistic(FiveParamLogistic):
         # X = C - log10((D-y)/(y-A))/B
         ratio = (self.D - y) / (y - self.A)  # type: ignore
         x = self.C - np.log10(ratio) / self.B  # type: ignore
+
+        if enforce_limits:
+            if isinstance(y, (np.ndarray, pd.Series)):
+                x[y > self.D] = np.nan  # type: ignore
+                x[y < self.A] = -np.inf  # type: ignore
+            elif isinstance(y, (int, float)):
+                if y > self.D:  # type: ignore
+                    return np.nan
+                elif y < self.A:  # type: ignore
+                    return -np.inf
         return x
 
 
