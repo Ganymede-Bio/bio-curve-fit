@@ -159,36 +159,90 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         **kwargs,
     ):
         """
-        Fit the associated Logistic model.
+        Fit the associated Logistic model with support for fixed parameters.
 
-        x_data: x data points
-        y_data: y data points
-        weight_func: optional Function that calculates weights from y_data. This is
+        If any model parameters are set to non-None values during initialization,
+        those parameters will be held constant during fitting.
+
+        Parameters
+        ----------
+        x_data: array-like
+            x data points
+        y_data: array-like
+            y data points
+        weight_func: callable, optional
+            Function that calculates weights from y_data. This is
             passed into the `curve_fit` function where the function minimized is `sum
             ((r / weight_func(y_data)) ** 2)` where r is the residuals.
             Thus for a typical 1/y^2 weighting, `weight_func` should be `lambda
             y_data: y_data`
+        LOD_func: callable, optional
+            Function to calculate limits of detection. If None, uses
+            _calculate_lod_replicate_variance
+        initial_param_values: array-like, optional
+            Initial parameter guesses. If None, uses generate_initial_param_values
+        **kwargs: dict
+            Additional keyword arguments passed to scipy.optimize.curve_fit
         """
         x_data = np.array(x_data, dtype=np.float64)
         y_data = np.array(y_data, dtype=np.float64)
-        df_data = pd.DataFrame({"x": x_data, "y": y_data})
-        df_data.sort_values(by="x", inplace=True)
 
         if LOD_func is None:
-            # default LOD_func is to use replicate variance
             LOD_func = self._calculate_lod_replicate_variance
 
+        # Get parameter names from the _logistic_model signature
+        function_args = list(signature(self._logistic_model).parameters.keys())
+        function_args.remove("x")
+
+        # Determine which parameters are fixed (non-None) and which are free
+        fixed_params = {}
+        free_param_names = []
+
+        for param_name in function_args:
+            param_value = getattr(self, param_name, None)
+            if param_value is not None:
+                fixed_params[param_name] = param_value
+            else:
+                free_param_names.append(param_name)
+
+        # If all parameters are fixed, no fitting needed
+        if len(free_param_names) == 0:
+            self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(
+                x_data, y_data
+            )
+            self._free_param_names = []
+            self._has_fixed_params = True
+            return self
+
+        # Create a wrapper function that only optimizes free parameters
+        def constrained_model(x, *free_params):
+            # Reconstruct full parameter set
+            param_dict = fixed_params.copy()
+            for name, value in zip(free_param_names, free_params):
+                param_dict[name] = value
+            # Call _logistic_model with parameters in the correct order
+            param_values = [param_dict[name] for name in function_args]
+            return self._logistic_model(x, *param_values)
+
+        # Generate initial values for free parameters only
+        if not initial_param_values:
+            full_initial = self.generate_initial_param_values(x_data, y_data)
+            # Map parameter names to their indices in the full initial array
+            param_name_to_idx = {name: idx for idx, name in enumerate(function_args)}
+            initial_param_values = [
+                full_initial[param_name_to_idx[name]] for name in free_param_names
+            ]
+
+        # Setup weights
         absolute_sigma = False
         weights = None
         if weight_func is not None:
             weights = weight_func(y_data)
             absolute_sigma = True
 
-        if not initial_param_values:
-            initial_param_values = self.generate_initial_param_values(x_data, y_data)
-
+        # Setup curve_fit arguments
         curve_fit_kwargs = {
-            "f": self._logistic_model,
+            "f": constrained_model if fixed_params else self._logistic_model,
             "xdata": x_data,
             "ydata": y_data,
             "p0": initial_param_values,
@@ -197,17 +251,26 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
             "absolute_sigma": absolute_sigma,
         }
 
-        # overwrite parameters with any kwargs passed in
+        # Overwrite parameters with any kwargs passed in
         for k, v in kwargs.items():
             curve_fit_kwargs[k] = v
 
         # Perform the curve fit
         fitted_params, cov = curve_fit(**curve_fit_kwargs)
-        # get the arguments of the logistic model except x (the data)
-        function_args = list(signature(self._logistic_model).parameters.keys())
-        function_args.remove("x")
-        params_dict = {k: v for k, v in zip(function_args, fitted_params)}
-        self.set_params(**params_dict)
+
+        # Set the fitted parameters
+        if fixed_params:
+            # Only set free parameters
+            for name, value in zip(free_param_names, fitted_params):
+                setattr(self, name, value)
+        else:
+            # Set all parameters
+            params_dict = {k: v for k, v in zip(function_args, fitted_params)}
+            self.set_params(**params_dict)
+
+        # Store information about which parameters were fixed
+        self._free_param_names = free_param_names
+        self._has_fixed_params = len(free_param_names) < len(function_args)
 
         self.cov_ = cov
         self.n_samples_ = len(x_data)  # Store for DOF calculation
@@ -339,378 +402,6 @@ class LogisticRegression(RegressorMixin, BaseStandardCurve, ABC):
         return self._predict_bands(x_data, alpha=alpha, y_data=y_data)
 
 
-class FourParamLogistic(LogisticRegression):
-    """Implementation of the 4 Parameter Logistic (4PL) model.
-
-    Supports parameter constraints by fixing specific parameters during initialization.
-    For example, to create a 3PL model with fixed Hill's slope:
-        model = FourParamLogistic(B=1.0)
-
-    Parameters
-    ----------
-    A : float, optional
-        Minimum asymptote. If provided, this parameter will be fixed during fitting.
-    B : float, optional
-        Hill's slope. If provided, this parameter will be fixed during fitting.
-    C : float, optional
-        Inflection point (EC50). If provided, this parameter will be fixed during fitting.
-    D : float, optional
-        Maximum asymptote. If provided, this parameter will be fixed during fitting.
-    """
-
-    def __init__(self, A=None, B=None, C=None, D=None, **kwargs):
-        self.A = A
-        self.B = B
-        self.C = C
-        self.D = D
-
-        super().__init__(**kwargs)
-
-    def semi_log_linear_range_of_response(self) -> Tuple[float, float]:
-        """
-        Return the response range where the curve is approximately linear in a semi-log plot.
-
-        That is, it returns the lower and upper limit y-values where the curve will "look" linear
-        when plotted on a log scaled x-axis (usually concentration) and a linear y-axis (usually response).
-
-        Follows Sebaugh, Jeanne & McCray, P.. (2003). Defining the linear portion of a sigmoid-shaped curve: Bend points. Pharmaceutical Statistics - PHARM STAT. 2. 167-174. 10.1002/pst.62. See the pdf in the references folder in this repo, or https://www.researchgate.net/publication/246918700_Defining_the_linear_portion_of_a_sigmoid-shaped_curve_Bend_points
-
-
-        """
-        self._check_fit_params()
-        K = 4.680498579  # Magic number from the paper
-        A = self.A
-        D = self.D
-        y_bend_lower = (A - D) / (1 + 1 / K) + D  # type: ignore
-        y_bend_upper = (A - D) / (1 + K) + D  # type: ignore
-        return y_bend_lower, y_bend_upper
-
-    @staticmethod
-    def _logistic_model(x, A, B, C, D):
-        """4 Parameter Logistic (4PL) model."""
-        # For addressing fractional powers of negative numbers
-        # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        z = np.sign(x / C) * np.abs(x / C) ** B
-
-        return ((A - D) / (1.0 + z)) + D
-
-    @staticmethod
-    def _tangent_line_at_midpoint(x, A, B, C, D):
-        """Line with slope = (Derivative of the 4PL curve evaluated at C) and passing through the point C."""
-        return -(A - D) * B / (4 * C) * (x - C) + (A + D) / 2
-
-    @staticmethod
-    def _tangent_line_at_arbitrary_point(x, g, A, B, C, D):
-        """Return y value of line with slope = (Derivative of the 4PL curve evaluated at g) and passing through the point (g, f(g))."""
-        derivative_at_g = (
-            -1 * (A - D) * B * (g / C) ** (B - 1) / (C * (1 + (g / C) ** B) ** 2)
-        )
-
-        line_with_slope_at_g = derivative_at_g * (
-            x - g
-        ) + FourParamLogistic._logistic_model(g, A, B, C, D)
-        return line_with_slope_at_g
-
-    def tangent_line_at_arbitrary_point(self, x, g):
-        """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
-        self._check_fit_params()
-        return FourParamLogistic._tangent_line_at_arbitrary_point(
-            x, g, self.A, self.B, self.C, self.D
-        )
-
-    def tangent_line_at_midpoint(self, x):
-        """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
-        self._check_fit_params()
-        return FourParamLogistic._tangent_line_at_midpoint(
-            x, self.A, self.B, self.C, self.D
-        )
-
-    def fit(
-        self,
-        x_data,
-        y_data,
-        weight_func=None,
-        LOD_func=None,
-        initial_param_values=None,
-        **kwargs,
-    ):
-        """
-        Fit the 4PL model with support for fixed parameters.
-
-        If any of A, B, C, D are set to non-None values during initialization,
-        those parameters will be held constant during fitting.
-        """
-        x_data = np.array(x_data, dtype=np.float64)
-        y_data = np.array(y_data, dtype=np.float64)
-
-        # Determine which parameters are fixed
-        fixed_params = {}
-        free_param_names = []
-
-        if self.A is not None:
-            fixed_params["A"] = self.A
-        else:
-            free_param_names.append("A")
-
-        if self.B is not None:
-            fixed_params["B"] = self.B
-        else:
-            free_param_names.append("B")
-
-        if self.C is not None:
-            fixed_params["C"] = self.C
-        else:
-            free_param_names.append("C")
-
-        if self.D is not None:
-            fixed_params["D"] = self.D
-        else:
-            free_param_names.append("D")
-
-        if len(free_param_names) == 0:
-            # All parameters are fixed, no fitting needed
-            if LOD_func is None:
-                LOD_func = self._calculate_lod_replicate_variance
-            self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(
-                x_data, y_data
-            )
-            return self
-
-        # Create a wrapper function that only optimizes free parameters
-        def constrained_model(x, *free_params):
-            # Reconstruct full parameter set
-            param_dict = fixed_params.copy()
-            for name, value in zip(free_param_names, free_params):
-                param_dict[name] = value
-            return self._logistic_model(
-                x, param_dict["A"], param_dict["B"], param_dict["C"], param_dict["D"]
-            )
-
-        # Generate initial values for free parameters only
-        if not initial_param_values:
-            full_initial = self.generate_initial_param_values(x_data, y_data)
-            param_name_to_idx = {"A": 0, "B": 1, "C": 2, "D": 3}
-            initial_param_values = [
-                full_initial[param_name_to_idx[name]] for name in free_param_names
-            ]
-
-        if LOD_func is None:
-            LOD_func = self._calculate_lod_replicate_variance
-
-        absolute_sigma = False
-        weights = None
-        if weight_func is not None:
-            weights = weight_func(y_data)
-            absolute_sigma = True
-
-        curve_fit_kwargs = {
-            "f": constrained_model,
-            "xdata": x_data,
-            "ydata": y_data,
-            "p0": initial_param_values,
-            "maxfev": 10000,
-            "sigma": weights,
-            "absolute_sigma": absolute_sigma,
-        }
-
-        # overwrite parameters with any kwargs passed in
-        for k, v in kwargs.items():
-            curve_fit_kwargs[k] = v
-
-        # Perform the curve fit
-        fitted_params, cov = curve_fit(**curve_fit_kwargs)  # type: ignore
-
-        # Set the fitted parameters
-        for name, value in zip(free_param_names, fitted_params):
-            setattr(self, name, value)
-
-        # Store information about which parameters were fixed for later use
-        self._free_param_names = free_param_names
-        self._has_fixed_params = len(free_param_names) < 4
-
-        self.cov_ = cov
-        self.n_samples_ = len(x_data)  # Store for DOF calculation
-        self.LLOD_, self.ULOD_, self.LLOD_y_, self.ULOD_y_ = LOD_func(x_data, y_data)
-
-        return self
-
-    def generate_initial_param_values(self, x_data, y_data):
-        """Generate an initial guess for the parameters of the 4PL model based on the data."""
-        x_data = np.float64(x_data)
-        y_data = np.float64(y_data)
-        df_data = pd.DataFrame({"x": x_data, "y": y_data})
-        df_data.sort_values(by="x", inplace=True)
-
-        # Initial guess for the parameters
-        guess_A = np.min(y_data)  # type: ignore
-        if self.slope_direction_positive is not None:
-            guess_B = 1.0 if self.slope_direction_positive else -1.0
-        else:
-            # type: ignore
-            guess_B = (
-                1.0
-                if np.mean(
-                    df_data.iloc[
-                        : min(self.slope_guess_num_points_to_use, len(df_data))
-                    ][  # type: ignore
-                        "y"
-                    ]
-                )
-                < np.mean(
-                    df_data.iloc[
-                        -min(self.slope_guess_num_points_to_use, len(df_data)) :
-                    ][  # type: ignore
-                        "y"
-                    ]
-                )
-                else -1.0
-            )
-        guess_C = np.mean(x_data)  # type: ignore
-        guess_D = np.max(y_data)  # type: ignore
-        initial_guess = [guess_A, guess_B, guess_C, guess_D]
-
-        return initial_guess
-
-    def jacobian(self, x_data):
-        """Jacobian matrix of the 4PL function with respect to A, B, C, D."""
-        self._check_fit_params()
-        z = (x_data / self.C) ** self.B
-
-        partial_A = 1.0 / (1.0 + z)
-        partial_B = -(
-            z
-            * (self.A - self.D)
-            * np.log(np.maximum(x_data / self.C, np.finfo(float).eps))  # type: ignore
-        ) / (  # type: ignore
-            (1.0 + z) ** 2
-        )
-        partial_C = (self.B * z * (self.A - self.D)) / (self.C * (1.0 + z) ** 2)
-        partial_D = 1.0 - 1.0 / (1.0 + z)
-
-        # Jacobian matrix
-        J = np.array([partial_A, partial_B, partial_C, partial_D]).T
-        return J
-
-    def predict_confidence_band(self, x_data, alpha=0.05):
-        """
-        Predict confidence bands of data points.
-
-        Parameters
-        ----------
-        x_data : array-like
-            Input data points for which to calculate confidence bands
-        alpha : float, default=0.05
-            Significance level for confidence interval (0.05 for 95% confidence)
-
-        Returns
-        -------
-        np.ndarray
-            Half-width of confidence band at each x_data point
-        """
-        if not (0 < alpha < 1):
-            raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
-        # Check if any parameters were fixed during fitting
-        if hasattr(self, "_has_fixed_params") and self._has_fixed_params:
-            raise NotImplementedError(
-                "Confidence bands are not yet supported for models with fixed parameters. "
-                "Use FourParamLogistic() without parameter constraints for confidence band calculations."
-            )
-
-        return super().predict_confidence_band(x_data, alpha=alpha)
-
-    def predict_prediction_band(self, x_data, y_data, alpha=0.05):
-        """Predict prediction bands of data points.
-
-        Parameters
-        ----------
-        x_data : array-like
-            Input data points for which to calculate prediction bands
-        y_data : array-like
-            Training response data used to calculate residual variance
-        alpha : float, default=0.05
-            Significance level for prediction interval (0.05 for 95% prediction)
-
-        Returns
-        -------
-        np.ndarray
-            Half-width of prediction band at each x_data point
-
-        Notes
-        -----
-        Prediction bands include both parameter uncertainty (from confidence bands)
-        and residual variance from the model fit.
-        """
-        if not (0 < alpha < 1):
-            raise ValueError(f"alpha must be between 0 and 1, got {alpha}")
-        # Check if any parameters were fixed during fitting
-        if hasattr(self, "_has_fixed_params") and self._has_fixed_params:
-            raise NotImplementedError(
-                "Prediction bands are not yet supported for models with fixed parameters. "
-                "Use FourParamLogistic() without parameter constraints for prediction band calculations."
-            )
-
-        return super().predict_prediction_band(x_data, y_data, alpha=alpha)
-
-    def predict_inverse(
-        self, y: Union[float, int, np.ndarray, Iterable[float]], enforce_limits=True
-    ):
-        """Inverse 4 Parameter Logistic (4PL) model.
-
-        Used for calculating the x-value for a given y-value.
-        Usually, standard curves are fitted using concentration as x-values and response as
-        y-values, so that variance in response is modeled for a given known concentration.
-        But for samples of unknown concentration, we want to get the concentration as given
-        response, which is what this function does.
-
-        Parameters
-        ----------
-        y: float or iterable
-            The response value for which the corresponding x-value will be calculated.
-        enforce_limits: bool
-            If True, return np.nan for y-values above the maximum asymptote (D) of the curve, and 0 for y-values below the minimum asymptote (A) of the curve.
-
-        """
-        self._check_fit_params()
-        if isinstance(y, list):
-            y = np.array(y, dtype=float)
-
-        z = ((self.A - self.D) / (y - self.D)) - 1  # type: ignore
-
-        # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
-        # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        x = self.C * (np.sign(z) * np.abs(z) ** (1 / self.B))  # type: ignore
-        if enforce_limits:
-            if isinstance(y, (np.ndarray, pd.Series)):
-                x[y > self.D] = np.nan  # type: ignore
-                x[y < self.A] = 0  # type: ignore
-            elif isinstance(y, (int, float)):
-                if y > self.D:  # type: ignore
-                    return np.nan
-                elif y < self.A:  # type: ignore
-                    return 0
-        return x
-
-    def predict(self, x_data):
-        """Predict y-values using the 4PL model.
-
-        Parameters
-        ----------
-            x_data (iterable): x data points
-
-        Returns
-        -------
-            iterable: y data points
-        """
-        self._check_fit_params()
-        return self._logistic_model(
-            x_data,
-            self.A,
-            self.B,
-            self.C,
-            self.D,
-        )
-
-
 class FiveParamLogistic(LogisticRegression):
     r"""
 
@@ -804,15 +495,22 @@ class FiveParamLogistic(LogisticRegression):
         )
 
     def generate_initial_param_values(self, x_data, y_data):
-        """Generate an initial guess for the parameters of the 5PL model based on the data."""
+        """Generate an initial guess for the parameters of the 5PL model based on the data.
+
+        Uses fixed parameter values if they are already set (not None), otherwise generates
+        reasonable guesses from the data.
+        """
         x_data = np.float64(x_data)
         y_data = np.float64(y_data)
         df_data = pd.DataFrame({"x": x_data, "y": y_data})
         df_data.sort_values(by="x", inplace=True)
 
-        # Initial guess for the parameters
-        initial_A = np.min(y_data)  # type: ignore
-        if self.slope_direction_positive is not None:
+        # Use fixed value if parameter is already set, otherwise generate initial guess
+        initial_A = self.A if self.A is not None else np.min(y_data)  # type: ignore
+
+        if self.B is not None:
+            initial_B = self.B
+        elif self.slope_direction_positive is not None:
             initial_B = 1.0 if self.slope_direction_positive else -1.0
         else:
             # type: ignore
@@ -834,9 +532,10 @@ class FiveParamLogistic(LogisticRegression):
                 )
                 else -1.0
             )
-        initial_C = np.mean(x_data)  # type: ignore
-        initial_D = np.max(y_data)  # type: ignore
-        initial_E = 1.0
+
+        initial_C = self.C if self.C is not None else np.mean(x_data)  # type: ignore
+        initial_D = self.D if self.D is not None else np.max(y_data)  # type: ignore
+        initial_E = self.E if self.E is not None else 1.0
 
         initial_guess = [initial_A, initial_B, initial_C, initial_D, initial_E]
 
@@ -905,9 +604,9 @@ class FiveParamLogistic(LogisticRegression):
 
         term1 = (np.sign(z) * np.abs(z)) ** (1 / self.E) - 1  # type: ignore
 
-        # For addressing fractional powers of negative numbers, np.sign(z) * np.abs(z) used rather than z
+        # For addressing fractional powers of negative numbers, np.sign * abs pattern handles negative values
         # https://stackoverflow.com/questions/45384602/numpy-runtimewarning-invalid-value-encountered-in-power
-        x = self.C * term1 ** (1 / self.B)  # type: ignore
+        x = self.C * (np.sign(term1) * np.abs(term1) ** (1 / self.B))  # type: ignore
 
         if enforce_limits:
             if isinstance(y, (np.ndarray, pd.Series)):
@@ -942,10 +641,209 @@ class FiveParamLogistic(LogisticRegression):
         )
 
 
-class LogDoseThreeParamLogistic(LogisticRegression):
+class FourParamLogistic(FiveParamLogistic):
+    """Implementation of the 4 Parameter Logistic (4PL) model.
+
+    The 4PL is a special case of the 5PL model with E=1 (symmetric curve).
+    Supports parameter constraints by fixing specific parameters during initialization.
+    For example, to create a 3PL model with fixed Hill's slope:
+        model = FourParamLogistic(B=1.0)
+
+    Parameters
+    ----------
+    A : float, optional
+        Minimum asymptote. If provided, this parameter will be fixed during fitting.
+    B : float, optional
+        Hill's slope. If provided, this parameter will be fixed during fitting.
+    C : float, optional
+        Inflection point (EC50). If provided, this parameter will be fixed during fitting.
+    D : float, optional
+        Maximum asymptote. If provided, this parameter will be fixed during fitting.
+    """
+
+    def __init__(self, A=None, B=None, C=None, D=None, **kwargs):
+        # FourPL is FivePL with E=1 (symmetric curve)
+        super().__init__(A=A, B=B, C=C, D=D, E=1, **kwargs)
+
+    @staticmethod
+    def _logistic_model(x, A, B, C, D, E=1):
+        """4 Parameter Logistic (4PL) model.
+
+        E parameter is accepted but ignored (always treated as 1) for compatibility
+        with parent class predict() method.
+        """
+        return FiveParamLogistic._logistic_model(x, A, B, C, D, E=1)
+
+    def semi_log_linear_range_of_response(self) -> Tuple[float, float]:
+        """
+        Return the response range where the curve is approximately linear in a semi-log plot.
+
+        That is, it returns the lower and upper limit y-values where the curve will "look" linear
+        when plotted on a log scaled x-axis (usually concentration) and a linear y-axis (usually response).
+
+        Follows Sebaugh, Jeanne & McCray, P.. (2003). Defining the linear portion of a sigmoid-shaped curve: Bend points. Pharmaceutical Statistics - PHARM STAT. 2. 167-174. 10.1002/pst.62. See the pdf in the references folder in this repo, or https://www.researchgate.net/publication/246918700_Defining_the_linear_portion_of_a_sigmoid-shaped_curve_Bend_points
+
+
+        """
+        self._check_fit_params()
+        K = 4.680498579  # Magic number from the paper
+        A = self.A
+        D = self.D
+        y_bend_lower = (A - D) / (1 + 1 / K) + D  # type: ignore
+        y_bend_upper = (A - D) / (1 + K) + D  # type: ignore
+        return y_bend_lower, y_bend_upper
+
+    @staticmethod
+    def _tangent_line_at_midpoint(x, A, B, C, D):
+        """Line with slope = (Derivative of the 4PL curve evaluated at C) and passing through the point C."""
+        return -(A - D) * B / (4 * C) * (x - C) + (A + D) / 2
+
+    @staticmethod
+    def _tangent_line_at_arbitrary_point(x, g, A, B, C, D):
+        """Return y value of line with slope = (Derivative of the 4PL curve evaluated at g) and passing through the point (g, f(g))."""
+        derivative_at_g = (
+            -1 * (A - D) * B * (g / C) ** (B - 1) / (C * (1 + (g / C) ** B) ** 2)
+        )
+
+        line_with_slope_at_g = derivative_at_g * (
+            x - g
+        ) + FourParamLogistic._logistic_model(g, A, B, C, D)
+        return line_with_slope_at_g
+
+    def tangent_line_at_arbitrary_point(self, x, g):
+        """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
+        self._check_fit_params()
+        return FourParamLogistic._tangent_line_at_arbitrary_point(
+            x, g, self.A, self.B, self.C, self.D
+        )
+
+    def tangent_line_at_midpoint(self, x):
+        """Return the f(x) where f is the line tangent to the 4PL curve at the point g."""
+        self._check_fit_params()
+        return FourParamLogistic._tangent_line_at_midpoint(
+            x, self.A, self.B, self.C, self.D
+        )
+
+    def generate_initial_param_values(self, x_data, y_data):
+        """Generate an initial guess for the parameters of the 4PL model based on the data."""
+        x_data = np.float64(x_data)
+        y_data = np.float64(y_data)
+        df_data = pd.DataFrame({"x": x_data, "y": y_data})
+        df_data.sort_values(by="x", inplace=True)
+
+        # Initial guess for the parameters
+        guess_A = np.min(y_data)  # type: ignore
+        if self.slope_direction_positive is not None:
+            guess_B = 1.0 if self.slope_direction_positive else -1.0
+        else:
+            # type: ignore
+            guess_B = (
+                1.0
+                if np.mean(
+                    df_data.iloc[
+                        : min(self.slope_guess_num_points_to_use, len(df_data))
+                    ][  # type: ignore
+                        "y"
+                    ]
+                )
+                < np.mean(
+                    df_data.iloc[
+                        -min(self.slope_guess_num_points_to_use, len(df_data)) :
+                    ][  # type: ignore
+                        "y"
+                    ]
+                )
+                else -1.0
+            )
+        guess_C = np.mean(x_data)  # type: ignore
+        guess_D = np.max(y_data)  # type: ignore
+        initial_guess = [guess_A, guess_B, guess_C, guess_D]
+
+        return initial_guess
+
+    def jacobian(self, x_data):
+        """Jacobian matrix of the 4PL function with respect to A, B, C, D.
+
+        Returns a 4-column Jacobian (without E) since E is fixed at 1 for 4PL.
+        """
+        self._check_fit_params()
+        z = (x_data / self.C) ** self.B
+
+        partial_A = 1.0 / (1.0 + z)
+        partial_B = -(
+            z
+            * (self.A - self.D)
+            * np.log(np.maximum(x_data / self.C, np.finfo(float).eps))  # type: ignore
+        ) / (  # type: ignore
+            (1.0 + z) ** 2
+        )
+        partial_C = (self.B * z * (self.A - self.D)) / (self.C * (1.0 + z) ** 2)
+        partial_D = 1.0 - 1.0 / (1.0 + z)
+
+        # Jacobian matrix (4 columns, without E since E=1 is fixed)
+        J = np.array([partial_A, partial_B, partial_C, partial_D]).T
+        return J
+
+
+class LogDoseFourParamLogistic(FiveParamLogistic):
+    """Implementation of the Log-Dose 4-Parameter Logistic model.
+
+    The Log-Dose 4PL is a variant of the 5PL model that uses base-10 exponential
+    form instead of power-law. It's defined by:
+    Y = A + (D - A) / (1 + 10^((C - X) * B))
+
+    This is commonly used in pharmacology and biochemistry, where:
+    - A: minimum asymptote (Bottom)
+    - B: Hill slope
+    - C: log10 of the concentration at half-maximal response (LogEC50)
+    - D: maximum asymptote (Top)
+
+    Parameters
+    ----------
+    A : float, optional
+        Minimum asymptote parameter. Set during fitting if not provided.
+    B : float, optional
+        Hill slope parameter. Set during fitting if not provided.
+    C : float, optional
+        Log10 of EC50 concentration parameter. Set during fitting if not provided.
+    D : float, optional
+        Maximum asymptote parameter. Set during fitting if not provided.
+    """
+
+    def __init__(self, A=None, B=None, C=None, D=None, **kwargs):
+        # LogDose4PL is like 5PL with E=1 but uses exponential form
+        super().__init__(A=A, B=B, C=C, D=D, E=1, **kwargs)
+
+    @staticmethod
+    def _logistic_model(x, A, B, C, D, E=1):
+        """Log-Dose 4PL model: Y = A + (D-A)/(1+10^((C-X)*B)).
+
+        E parameter is accepted but ignored (always treated as 1) for compatibility
+        with parent class.
+        """
+        return A + (D - A) / (1 + 10 ** ((C - x) * B))
+
+    def predict_inverse(self, y):
+        """Inverse Log-Dose 4PL model.
+
+        Overrides parent to use log-dose specific inverse formula.
+        """
+        self._check_fit_params()
+        if isinstance(y, list):
+            y = np.array(y, dtype=float)
+
+        # X = C - log10((D-y)/(y-A))/B
+        ratio = (self.D - y) / (y - self.A)  # type: ignore
+        x = self.C - np.log10(ratio) / self.B  # type: ignore
+        return x
+
+
+class LogDoseThreeParamLogistic(LogDoseFourParamLogistic):
     """Implementation of the Log-Dose 3-Parameter Logistic model.
 
-    The Log-Dose 3PL model is defined by:
+    The Log-Dose 3PL model is a special case of the Log-Dose 4PL model with B=1 (Hill slope = 1).
+
+    The model is defined by:
     Y = A + (D - A) / (1 + 10^((C - X)))
 
     This is a 3-parameter logistic model commonly used in pharmacology and biochemistry, where:
@@ -953,7 +851,7 @@ class LogDoseThreeParamLogistic(LogisticRegression):
     - D: maximum asymptote (Top)
     - C: log10 of the concentration at half-maximal response (LogEC50)
 
-    The model assumes a Hill slope of 1 (no Hill slope parameter B).
+    The Hill slope is fixed at 1.
 
     Parameters
     ----------
@@ -966,53 +864,17 @@ class LogDoseThreeParamLogistic(LogisticRegression):
     """
 
     def __init__(self, A=None, D=None, C=None, **kwargs):
-        self.A = A
-        self.D = D
-        self.C = C
-        super().__init__(**kwargs)
+        # LogDose3PL is LogDose4PL with B=1 (Hill slope = 1)
+        super().__init__(A=A, B=1, C=C, D=D, **kwargs)
 
     @staticmethod
-    def _logistic_model(x, A, D, C):
-        """Log-Dose 3PL model: Y = A + (D-A)/(1+10^((C-X)))."""
-        return A + (D - A) / (1 + 10 ** (C - x))
+    def _logistic_model(x, A, B=1, C=None, D=None, E=1):
+        """Log-Dose 3PL model: Y = A + (D-A)/(1+10^((C-X))).
 
-    def predict_inverse(
-        self, y: Union[float, int, np.ndarray, Iterable[float]], enforce_limits=True
-    ):
-        """Inverse Log-Dose 3PL model.
-
-        Used for calculating the x-value for a given y-value.
-
-        Parameters
-        ----------
-        y: float or iterable
-            The response value for which the corresponding x-value will be calculated.
-        enforce_limits: bool
-            If True, return np.nan for y-values above D or below A.
+        B and E parameters are accepted but ignored (always treated as 1) for compatibility
+        with parent class. Can be called with (x, A, D, C) for backward compatibility.
         """
-        self._check_fit_params()
-        if isinstance(y, list):
-            y = np.array(y, dtype=float)
-
-        # Solve for x: y = A + (D-A)/(1+10^(C-x))
-        # Rearranging: (y-A)/(D-A) = 1/(1+10^(C-x))
-        # (1+10^(C-x)) = (D-A)/(y-A)
-        # 10^(C-x) = (D-A)/(y-A) - 1
-        # 10^(C-x) = (D-y)/(y-A)
-        # C-x = log10((D-y)/(y-A))
-        # x = C - log10((D-y)/(y-A))
-
-        ratio = (self.D - y) / (y - self.A)  # type: ignore
-        x = self.C - np.log10(ratio)  # type: ignore
-
-        if enforce_limits:
-            if isinstance(y, (np.ndarray, pd.Series)):
-                x[y > self.D] = np.nan  # type: ignore
-                x[y < self.A] = np.nan  # type: ignore
-            elif isinstance(y, (int, float)):
-                if y > self.D or y < self.A:  # type: ignore
-                    return np.nan
-        return x
+        return LogDoseFourParamLogistic._logistic_model(x, A, B=1, C=C, D=D, E=1)
 
     def jacobian(self, x_data):
         """Jacobian matrix of the Log-Dose 3PL function with respect to A, D, C."""
@@ -1032,20 +894,3 @@ class LogDoseThreeParamLogistic(LogisticRegression):
         # Jacobian matrix
         J = np.array([partial_A, partial_D, partial_C]).T
         return J
-
-    def generate_initial_param_values(self, x_data, y_data):
-        """Generate initial guess for Log-Dose 3PL model parameters."""
-        x_data = np.array(x_data, dtype=np.float64)
-        y_data = np.array(y_data, dtype=np.float64)
-
-        # Initial guesses
-        guess_A = np.min(y_data)  # minimum asymptote
-        guess_D = np.max(y_data)  # maximum asymptote
-        guess_C = np.mean(x_data)  # assume x_data is already in log scale
-
-        return [guess_A, guess_D, guess_C]
-
-    def predict(self, x_data):
-        """Predict y-values using the Log-Dose 3PL model."""
-        self._check_fit_params()
-        return self._logistic_model(x_data, self.A, self.D, self.C)
