@@ -549,7 +549,7 @@ class FiveParamLogistic(LogisticRegression):
         partial_A = 1.0 / (1.0 + z) ** self.E
 
         partial_B_num = (
-            -(self.A - self.D)
+            -(self.A - self.D)  # type: ignore
             * self.E
             * z
             * np.log(
@@ -559,16 +559,16 @@ class FiveParamLogistic(LogisticRegression):
                 )
             )
         )
-        partial_B_denom = (1 + z) ** (self.E + 1)
+        partial_B_denom = (1 + z) ** (self.E + 1)  # type: ignore
         partial_B = partial_B_num / partial_B_denom
 
-        partial_C_num = -(self.A - self.D) * self.E * self.B * z
-        partial_C_denom = self.C * (1 + z) ** (self.E + 1)
+        partial_C_num = -(self.A - self.D) * self.E * self.B * z  # type: ignore
+        partial_C_denom = self.C * (1 + z) ** (self.E + 1)  # type: ignore
         partial_C = partial_C_num / partial_C_denom
 
         partial_D = 1.0 - 1.0 / (1.0 + z) ** self.E
 
-        partial_E_num = -(self.A - self.D) * np.log(1 + z)
+        partial_E_num = -(self.A - self.D) * np.log(1 + z)  # type: ignore
         partial_E_denom = (1 + z) ** self.E
 
         partial_E = partial_E_num / partial_E_denom
@@ -578,7 +578,9 @@ class FiveParamLogistic(LogisticRegression):
         return J
 
     def predict_inverse(
-        self, y: Union[float, int, np.ndarray, Iterable[float]], enforce_limits=True
+        self,
+        y: Union[float, int, np.ndarray, Iterable[float]],
+        enforce_limits: bool = True,
     ):
         """Inverse 5 Parameter Logistic (5PL) model.
 
@@ -724,43 +726,6 @@ class FourParamLogistic(FiveParamLogistic):
             x, self.A, self.B, self.C, self.D
         )
 
-    def generate_initial_param_values(self, x_data, y_data):
-        """Generate an initial guess for the parameters of the 4PL model based on the data."""
-        x_data = np.float64(x_data)
-        y_data = np.float64(y_data)
-        df_data = pd.DataFrame({"x": x_data, "y": y_data})
-        df_data.sort_values(by="x", inplace=True)
-
-        # Initial guess for the parameters
-        guess_A = np.min(y_data)  # type: ignore
-        if self.slope_direction_positive is not None:
-            guess_B = 1.0 if self.slope_direction_positive else -1.0
-        else:
-            # type: ignore
-            guess_B = (
-                1.0
-                if np.mean(
-                    df_data.iloc[
-                        : min(self.slope_guess_num_points_to_use, len(df_data))
-                    ][  # type: ignore
-                        "y"
-                    ]
-                )
-                < np.mean(
-                    df_data.iloc[
-                        -min(self.slope_guess_num_points_to_use, len(df_data)) :
-                    ][  # type: ignore
-                        "y"
-                    ]
-                )
-                else -1.0
-            )
-        guess_C = np.mean(x_data)  # type: ignore
-        guess_D = np.max(y_data)  # type: ignore
-        initial_guess = [guess_A, guess_B, guess_C, guess_D]
-
-        return initial_guess
-
     def jacobian(self, x_data):
         """Jacobian matrix of the 4PL function with respect to A, B, C, D.
 
@@ -772,12 +737,12 @@ class FourParamLogistic(FiveParamLogistic):
         partial_A = 1.0 / (1.0 + z)
         partial_B = -(
             z
-            * (self.A - self.D)
+            * (self.A - self.D)  # type: ignore
             * np.log(np.maximum(x_data / self.C, np.finfo(float).eps))  # type: ignore
         ) / (  # type: ignore
             (1.0 + z) ** 2
         )
-        partial_C = (self.B * z * (self.A - self.D)) / (self.C * (1.0 + z) ** 2)
+        partial_C = (self.B * z * (self.A - self.D)) / (self.C * (1.0 + z) ** 2)  # type: ignore
         partial_D = 1.0 - 1.0 / (1.0 + z)
 
         # Jacobian matrix (4 columns, without E since E=1 is fixed)
